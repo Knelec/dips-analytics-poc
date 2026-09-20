@@ -22,7 +22,8 @@ async function query(path) {
     `${process.env.SUPABASE_URL}/rest/v1/${path}`,
     {
       headers: {
-        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        apikey:
+          process.env.SUPABASE_SERVICE_ROLE_KEY,
         Authorization:
           `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
       },
@@ -40,7 +41,10 @@ async function query(path) {
 
 const siteDefinitions = [
   { location_id: 1, name: "Prince Albert" },
-  { location_id: 48, name: "North Battleford Bulk" },
+  {
+    location_id: 48,
+    name: "North Battleford Bulk",
+  },
   { location_id: 63, name: "Meadow Lake" },
   { location_id: 47, name: "The Pas" },
 ];
@@ -49,7 +53,9 @@ function productGroup(product) {
   const name = String(product || "").toLowerCase();
 
   if (
-    /(regular|premium|gasoline|unleaded|mogas)/.test(name)
+    /(regular|premium|gasoline|unleaded|mogas)/.test(
+      name,
+    )
   ) {
     return "gasoline";
   }
@@ -62,14 +68,17 @@ function productGroup(product) {
 }
 
 function createMonthlyTotals(deliveries) {
-  const months = Array.from({ length: 12 }, (_, index) => ({
-    month: index + 1,
-    all: 0,
-    gasoline: 0,
-    diesel: 0,
-    other: 0,
-    deliveries: 0,
-  }));
+  const months = Array.from(
+    { length: 12 },
+    (_, index) => ({
+      month: index + 1,
+      all: 0,
+      gasoline: 0,
+      diesel: 0,
+      other: 0,
+      deliveries: 0,
+    }),
+  );
 
   let recordedSince = null;
   let latestDelivery = null;
@@ -91,14 +100,16 @@ function createMonthlyTotals(deliveries) {
 
     if (
       !recordedSince ||
-      date.getTime() < new Date(recordedSince).getTime()
+      date.getTime() <
+        new Date(recordedSince).getTime()
     ) {
       recordedSince = delivery.end_at;
     }
 
     if (
       !latestDelivery ||
-      date.getTime() > new Date(latestDelivery).getTime()
+      date.getTime() >
+        new Date(latestDelivery).getTime()
     ) {
       latestDelivery = delivery.end_at;
     }
@@ -108,6 +119,7 @@ function createMonthlyTotals(deliveries) {
     recorded_since: recordedSince,
     latest_delivery: latestDelivery,
     delivery_count: deliveries.length,
+
     months: months.map((month) => ({
       ...month,
       all: Math.round(month.all),
@@ -124,18 +136,21 @@ async function loadSite(site, year) {
   const [
     throughput,
     statusRows,
-    alarms,
+    alarmRows,
     deliveries,
   ] = await Promise.all([
     query(
       `dips_annual_tank_throughput?select=*&location_id=eq.${site.location_id}&calendar_year=eq.${year}&order=tank.asc`,
     ),
+
     query(
       `dips_site_status?select=site_name,last_seen_at,updated_at&location_id=eq.${site.location_id}&limit=1`,
     ),
+
     query(
-      `dips_alarm_state?select=alarm_key,alarm_text,category,last_seen_at&location_id=eq.${site.location_id}&active=eq.true&order=last_seen_at.desc`,
+      `dips_alarm_state?select=alarm_key,alarm_text,category,active,first_seen_at,last_seen_at&location_id=eq.${site.location_id}&order=last_seen_at.desc`,
     ),
+
     query(
       `dips_deliveries?select=end_at,product,amount&location_id=eq.${site.location_id}&end_at=gte.${year}-01-01&end_at=lt.${nextYear}-01-01&order=end_at.asc`,
     ),
@@ -144,37 +159,51 @@ async function loadSite(site, year) {
   const status = statusRows[0] || null;
 
   const lastReport =
-    status?.last_seen_at || status?.updated_at || null;
+    status?.last_seen_at ||
+    status?.updated_at ||
+    null;
 
   const online = lastReport
-    ? Date.now() - new Date(lastReport).getTime() <
+    ? Date.now() -
+        new Date(lastReport).getTime() <
       60 * 60 * 1000
     : false;
+
+  const alarms = alarmRows.filter(
+    (alarm) => alarm.active === true,
+  );
 
   return {
     site: {
       location_id: site.location_id,
       name: status?.site_name || site.name,
     },
+
     year,
     throughput,
     monthly: createMonthlyTotals(deliveries),
+
     status: status
       ? { ...status, online }
       : { online: false },
+
     alarms,
+    alarm_history: alarmRows,
   };
 }
 
 function createRegionalMonthly(sites) {
-  const months = Array.from({ length: 12 }, (_, index) => ({
-    month: index + 1,
-    all: 0,
-    gasoline: 0,
-    diesel: 0,
-    other: 0,
-    deliveries: 0,
-  }));
+  const months = Array.from(
+    { length: 12 },
+    (_, index) => ({
+      month: index + 1,
+      all: 0,
+      gasoline: 0,
+      diesel: 0,
+      other: 0,
+      deliveries: 0,
+    }),
+  );
 
   let recordedSince = null;
   let latestDelivery = null;
@@ -183,41 +212,60 @@ function createRegionalMonthly(sites) {
   sites.forEach((site) => {
     const monthly = site.monthly;
 
-    deliveryCount += monthly.delivery_count || 0;
+    deliveryCount +=
+      monthly.delivery_count || 0;
 
     if (
       monthly.recorded_since &&
       (
         !recordedSince ||
-        new Date(monthly.recorded_since).getTime() <
+        new Date(
+          monthly.recorded_since,
+        ).getTime() <
           new Date(recordedSince).getTime()
       )
     ) {
-      recordedSince = monthly.recorded_since;
+      recordedSince =
+        monthly.recorded_since;
     }
 
     if (
       monthly.latest_delivery &&
       (
         !latestDelivery ||
-        new Date(monthly.latest_delivery).getTime() >
+        new Date(
+          monthly.latest_delivery,
+        ).getTime() >
           new Date(latestDelivery).getTime()
       )
     ) {
-      latestDelivery = monthly.latest_delivery;
+      latestDelivery =
+        monthly.latest_delivery;
     }
 
-    monthly.months.forEach((month, index) => {
-      months[index].all += Number(month.all || 0);
-      months[index].gasoline += Number(
-        month.gasoline || 0,
-      );
-      months[index].diesel += Number(month.diesel || 0);
-      months[index].other += Number(month.other || 0);
-      months[index].deliveries += Number(
-        month.deliveries || 0,
-      );
-    });
+    monthly.months.forEach(
+      (month, index) => {
+        months[index].all += Number(
+          month.all || 0,
+        );
+
+        months[index].gasoline += Number(
+          month.gasoline || 0,
+        );
+
+        months[index].diesel += Number(
+          month.diesel || 0,
+        );
+
+        months[index].other += Number(
+          month.other || 0,
+        );
+
+        months[index].deliveries += Number(
+          month.deliveries || 0,
+        );
+      },
+    );
   });
 
   return {
@@ -230,7 +278,9 @@ function createRegionalMonthly(sites) {
 
 export async function handler(event) {
   if (!authorized(event)) {
-    return json(401, { error: "Unauthorized" });
+    return json(401, {
+      error: "Unauthorized",
+    });
   }
 
   const year = new Date().getFullYear();
@@ -244,7 +294,8 @@ export async function handler(event) {
 
     return json(200, {
       year,
-      monthly: createRegionalMonthly(sites),
+      monthly:
+        createRegionalMonthly(sites),
       sites,
     });
   } catch (error) {
