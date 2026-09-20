@@ -1233,3 +1233,356 @@ if (authorization) {
     }
   });
 }
+
+
+let alarmHistoryFilter = "all";
+
+function getRegionalAlarmHistory() {
+  return dashboardData.sites
+    .flatMap((site) =>
+      (site.alarm_history || []).map((alarm) => ({
+        ...alarm,
+        siteName: site.site.name,
+        locationId: site.site.location_id,
+      })),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.last_seen_at || 0).getTime() -
+        new Date(a.last_seen_at || 0).getTime(),
+    );
+}
+
+function addAlarmHistoryStyles() {
+  if ($("alarm-history-styles")) return;
+
+  const style = document.createElement("style");
+
+  style.id = "alarm-history-styles";
+
+  style.textContent = `
+    .alarm-history-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .alarm-history-summary {
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    .alarm-filter-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .alarm-filter {
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #94a3b8;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .alarm-filter.active {
+      border-color: #22d3ee;
+      background: rgba(34, 211, 238, 0.14);
+      color: #a5f3fc;
+    }
+
+    .alarm-history-row {
+      align-items: center;
+    }
+
+    .alarm-history-row.cleared {
+      border-color: rgba(52, 211, 153, 0.25);
+    }
+
+    .alarm-icon.cleared {
+      background: rgba(52, 211, 153, 0.15);
+      color: #6ee7b7;
+    }
+
+    .alarm-history-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 5px;
+      text-align: right;
+    }
+
+    .alarm-state {
+      display: inline-flex;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .alarm-state.active {
+      background: rgba(248, 113, 113, 0.16);
+      color: #fca5a5;
+    }
+
+    .alarm-state.cleared {
+      background: rgba(52, 211, 153, 0.15);
+      color: #6ee7b7;
+    }
+
+    .alarm-times {
+      color: #94a3b8;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 700px) {
+      .alarm-history-meta {
+        align-items: flex-start;
+        text-align: left;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function renderRegionalAlarmHistory(history) {
+  addAlarmHistoryStyles();
+
+  const filtered = history.filter((alarm) => {
+    if (alarmHistoryFilter === "active") {
+      return alarm.active === true;
+    }
+
+    if (alarmHistoryFilter === "cleared") {
+      return alarm.active !== true;
+    }
+
+    return true;
+  });
+
+  const activeCount = history.filter(
+    (alarm) => alarm.active === true,
+  ).length;
+
+  const clearedCount =
+    history.length - activeCount;
+
+  $("alarms").innerHTML = `
+    <div class="alarm-history-tools">
+      <span class="alarm-history-summary">
+        ${activeCount} active ·
+        ${clearedCount} cleared ·
+        ${history.length} total conditions
+      </span>
+
+      <div
+        class="alarm-filter-group"
+        aria-label="Alarm history filter"
+      >
+        <button
+          type="button"
+          class="alarm-filter ${
+            alarmHistoryFilter === "all"
+              ? "active"
+              : ""
+          }"
+          data-history-filter="all"
+        >
+          All
+        </button>
+
+        <button
+          type="button"
+          class="alarm-filter ${
+            alarmHistoryFilter === "active"
+              ? "active"
+              : ""
+          }"
+          data-history-filter="active"
+        >
+          Active
+        </button>
+
+        <button
+          type="button"
+          class="alarm-filter ${
+            alarmHistoryFilter === "cleared"
+              ? "active"
+              : ""
+          }"
+          data-history-filter="cleared"
+        >
+          Cleared
+        </button>
+      </div>
+    </div>
+
+    ${
+      filtered
+        .map((alarm) => {
+          const active =
+            alarm.active === true;
+
+          const firstSeen =
+            alarm.first_seen_at
+              ? new Date(
+                  alarm.first_seen_at,
+                ).toLocaleString("en-CA")
+              : "Unknown";
+
+          const lastSeen =
+            alarm.last_seen_at
+              ? new Date(
+                  alarm.last_seen_at,
+                ).toLocaleString("en-CA")
+              : "Unknown";
+
+          return `
+            <div
+              class="alarm alarm-history-row ${
+                active ? "" : "cleared"
+              }"
+            >
+              <span
+                class="alarm-icon ${
+                  active ? "" : "cleared"
+                }"
+              >
+                ${active ? "!" : "✓"}
+              </span>
+
+              <div>
+                <strong>
+                  ${esc(
+                    alarm.alarm_text ||
+                      alarm.alarm_key,
+                  )}
+                </strong>
+
+                <br>
+
+                <small>
+                  ${esc(alarm.siteName)} ·
+                  ${esc(
+                    alarm.category || "Alarm",
+                  )}
+                </small>
+              </div>
+
+              <div class="alarm-history-meta">
+                <span
+                  class="alarm-state ${
+                    active
+                      ? "active"
+                      : "cleared"
+                  }"
+                >
+                  ${
+                    active
+                      ? "Active"
+                      : "Cleared"
+                  }
+                </span>
+
+                <span class="alarm-times">
+                  First detected: ${firstSeen}
+                  <br>
+                  ${
+                    active
+                      ? "Last seen"
+                      : "Cleared"
+                  }: ${lastSeen}
+                </span>
+              </div>
+            </div>
+          `;
+        })
+        .join("") ||
+      '<div class="empty">No alarms match this filter.</div>'
+    }
+  `;
+
+  document
+    .querySelectorAll("[data-history-filter]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        alarmHistoryFilter =
+          button.dataset.historyFilter;
+
+        renderRegionalAlarmHistory(history);
+      });
+    });
+}
+
+function renderAlarms() {
+  currentView = "alarms";
+
+  setNavigation("alarms");
+
+  setHeader(
+    "ALL LOCATIONS",
+    "Alarm history",
+  );
+
+  const activeAlarms = allAlarms();
+  const history = getRegionalAlarmHistory();
+  const sites = dashboardData.sites;
+
+  const affectedSites = new Set(
+    activeAlarms.map(
+      (alarm) => alarm.locationId,
+    ),
+  ).size;
+
+  $("status").textContent =
+    activeAlarms.length === 0
+      ? "No active critical alarms"
+      : `${activeAlarms.length} active alarm${
+          activeAlarms.length === 1
+            ? ""
+            : "s"
+        }`;
+
+  $("status-banner").classList.toggle(
+    "offline",
+    activeAlarms.length > 0,
+  );
+
+  $("last-seen").textContent =
+    activeAlarms.length === 0
+      ? `${history.length} known alarm conditions across ${sites.length} sites`
+      : `${affectedSites} site${
+          affectedSites === 1 ? "" : "s"
+        } currently affected`;
+
+  setStats(
+    0,
+    0,
+    activeAlarms.length,
+    sites.length,
+  );
+
+  throughputPanel.hidden = true;
+  alarmsPanel.hidden = false;
+  $("monthly-panel").hidden = true;
+
+  setPanelHeading(
+    alarmsPanel,
+    "ALARM HISTORY",
+    "Regional alarm history",
+  );
+
+  renderRegionalAlarmHistory(history);
+}
