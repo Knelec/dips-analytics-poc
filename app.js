@@ -2056,3 +2056,911 @@ function showDashboard() {
   ensureLogoutButton();
   ensureExportMenu();
 }
+
+function pdfValue(value) {
+  return esc(
+    value === null ||
+      value === undefined ||
+      value === ""
+      ? "—"
+      : value,
+  );
+}
+
+function generateRegionalPdf() {
+  const reportWindow = window.open(
+    "",
+    "_blank",
+  );
+
+  if (!reportWindow) {
+    alert(
+      "Please allow pop-ups for this dashboard, then try the PDF export again.",
+    );
+
+    return;
+  }
+
+  const generatedAt =
+    new Date().toLocaleString("en-CA");
+
+  const logoUrl = new URL(
+    "suncor-energy-logo-png-transparent.png",
+    window.location.href,
+  ).href;
+
+  const sites = dashboardData.sites;
+  const allTanks = allThroughput();
+  const activeAlarms = allAlarms();
+
+  const gasolineTotal = allTanks
+    .filter((tank) => tank.is_gasoline)
+    .reduce(
+      (sum, tank) =>
+        sum +
+        Number(
+          tank.delivered_litres || 0,
+        ),
+      0,
+    );
+
+  const allProductsTotal = allTanks.reduce(
+    (sum, tank) =>
+      sum +
+      Number(
+        tank.delivered_litres || 0,
+      ),
+    0,
+  );
+
+  const onlineCount =
+    sites.filter(siteOnline).length;
+
+  const siteRows = sites
+    .map((site) => {
+      const throughput =
+        site.throughput || [];
+
+      const total = throughput.reduce(
+        (sum, tank) =>
+          sum +
+          Number(
+            tank.delivered_litres || 0,
+          ),
+        0,
+      );
+
+      return `
+        <tr>
+          <td>${pdfValue(
+            site.site.location_id,
+          )}</td>
+
+          <td>
+            <strong>
+              ${pdfValue(site.site.name)}
+            </strong>
+          </td>
+
+          <td>
+            <span
+              class="status ${
+                siteOnline(site)
+                  ? "online"
+                  : "offline"
+              }"
+            >
+              ${
+                siteOnline(site)
+                  ? "Online"
+                  : "Offline"
+              }
+            </span>
+          </td>
+
+          <td>
+            ${pdfValue(
+              lastReport(site)
+                ? new Date(
+                    lastReport(site),
+                  ).toLocaleString("en-CA")
+                : "",
+            )}
+          </td>
+
+          <td>
+            ${pdfValue(
+              site.monthly?.recorded_since
+                ? displayDate(
+                    site.monthly
+                      .recorded_since,
+                  )
+                : "",
+            )}
+          </td>
+
+          <td class="number">
+            ${throughput.length}
+          </td>
+
+          <td class="number">
+            ${(site.alarms || []).length}
+          </td>
+
+          <td class="number">
+            ${litres(total)}
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const monthNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  const monthlyRows = (
+    dashboardData.monthly?.months || []
+  )
+    .map(
+      (month, index) => `
+        <tr>
+          <td>
+            ${monthNames[index]}
+          </td>
+
+          <td class="number">
+            ${litres(month.all)}
+          </td>
+
+          <td class="number">
+            ${litres(month.gasoline)}
+          </td>
+
+          <td class="number">
+            ${litres(month.diesel)}
+          </td>
+
+          <td class="number">
+            ${litres(month.other)}
+          </td>
+
+          <td class="number">
+            ${month.deliveries}
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  const siteTankSections = sites
+    .map((site) => {
+      const tankRows = (
+        site.throughput || []
+      )
+        .map(
+          (tank) => `
+            <tr>
+              <td>${pdfValue(tank.tank)}</td>
+
+              <td>
+                ${pdfValue(
+                  tank.product ||
+                    "Unknown",
+                )}
+              </td>
+
+              <td>
+                ${pdfValue(
+                  tank.recorded_since
+                    ? displayDate(
+                        tank.recorded_since,
+                      )
+                    : "",
+                )}
+              </td>
+
+              <td class="number">
+                ${litres(
+                  tank.delivered_litres,
+                )}
+              </td>
+
+              <td class="number">
+                ${
+                  tank.current_volume_litres ==
+                  null
+                    ? "—"
+                    : litres(
+                        tank.current_volume_litres,
+                      )
+                }
+              </td>
+
+              <td class="number">
+                ${
+                  tank.is_gasoline
+                    ? `${Number(
+                        tank.compliance_percent ||
+                          0,
+                      ).toFixed(2)}%`
+                    : "Information only"
+                }
+              </td>
+
+              <td class="number">
+                ${
+                  tank.is_gasoline
+                    ? litres(
+                        tank.compliance_remaining_litres,
+                      )
+                    : "—"
+                }
+              </td>
+            </tr>
+          `,
+        )
+        .join("");
+
+      return `
+        <section class="site-section">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">
+                LOCATION
+                ${pdfValue(
+                  site.site.location_id,
+                )}
+              </span>
+
+              <h2>
+                ${pdfValue(site.site.name)}
+              </h2>
+            </div>
+
+            <span
+              class="status ${
+                siteOnline(site)
+                  ? "online"
+                  : "offline"
+              }"
+            >
+              ${
+                siteOnline(site)
+                  ? "Online"
+                  : "Offline"
+              }
+            </span>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Tank</th>
+                <th>Product</th>
+                <th>Recorded Since</th>
+                <th class="number">
+                  Delivered
+                </th>
+                <th class="number">
+                  Current Volume
+                </th>
+                <th class="number">
+                  Recorded Progress
+                </th>
+                <th class="number">
+                  To Limit
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${
+                tankRows ||
+                `
+                  <tr>
+                    <td colspan="7">
+                      No tank throughput
+                      records available.
+                    </td>
+                  </tr>
+                `
+              }
+            </tbody>
+          </table>
+        </section>
+      `;
+    })
+    .join("");
+
+  const alarmHistory = sites
+    .flatMap((site) =>
+      (site.alarm_history || []).map(
+        (alarm) => ({
+          ...alarm,
+          siteName: site.site.name,
+        }),
+      ),
+    )
+    .sort(
+      (a, b) =>
+        new Date(
+          b.last_seen_at || 0,
+        ).getTime() -
+        new Date(
+          a.last_seen_at || 0,
+        ).getTime(),
+    );
+
+  const alarmRows = alarmHistory
+    .map(
+      (alarm) => `
+        <tr>
+          <td>
+            ${pdfValue(alarm.siteName)}
+          </td>
+
+          <td>
+            ${pdfValue(
+              alarm.alarm_text ||
+                alarm.alarm_key,
+            )}
+          </td>
+
+          <td>
+            ${pdfValue(
+              alarm.category ||
+                "Alarm",
+            )}
+          </td>
+
+          <td>
+            <span
+              class="status ${
+                alarm.active
+                  ? "alarm-active"
+                  : "cleared"
+              }"
+            >
+              ${
+                alarm.active
+                  ? "Active"
+                  : "Cleared"
+              }
+            </span>
+          </td>
+
+          <td>
+            ${pdfValue(
+              alarm.first_seen_at
+                ? new Date(
+                    alarm.first_seen_at,
+                  ).toLocaleString("en-CA")
+                : "",
+            )}
+          </td>
+
+          <td>
+            ${pdfValue(
+              alarm.last_seen_at
+                ? new Date(
+                    alarm.last_seen_at,
+                  ).toLocaleString("en-CA")
+                : "",
+            )}
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  reportWindow.document.open();
+
+  reportWindow.document.write(`
+    <!doctype html>
+
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+
+        <title>
+          Regional Bulk Facility Report
+          ${dashboardData.year}
+        </title>
+
+        <style>
+          @page {
+            size: letter;
+            margin: 13mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            color: #15202b;
+            background: #ffffff;
+            font-family:
+              Arial,
+              Helvetica,
+              sans-serif;
+            font-size: 10px;
+            line-height: 1.4;
+          }
+
+          header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            padding-bottom: 16px;
+            border-bottom:
+              4px solid #1478ad;
+          }
+
+          .logo {
+            width: 175px;
+            max-height: 75px;
+            object-fit: contain;
+            object-position: left center;
+          }
+
+          .report-title {
+            text-align: right;
+          }
+
+          .report-title h1 {
+            margin: 0 0 5px;
+            color: #123b5a;
+            font-size: 24px;
+            line-height: 1.1;
+          }
+
+          .report-title p {
+            margin: 2px 0;
+            color: #526273;
+          }
+
+          .eyebrow {
+            display: block;
+            margin-bottom: 3px;
+            color: #1478ad;
+            font-size: 8px;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+
+          .summary {
+            display: grid;
+            grid-template-columns:
+              repeat(4, 1fr);
+            gap: 10px;
+            margin: 18px 0;
+          }
+
+          .summary-card {
+            padding: 12px;
+            border: 1px solid #d7e1e8;
+            border-radius: 8px;
+            background: #f4f8fb;
+          }
+
+          .summary-card span {
+            display: block;
+            margin-bottom: 6px;
+            color: #617181;
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+          }
+
+          .summary-card strong {
+            display: block;
+            color: #123b5a;
+            font-size: 17px;
+          }
+
+          section {
+            margin-top: 20px;
+          }
+
+          h2 {
+            margin: 0;
+            color: #123b5a;
+            font-size: 16px;
+          }
+
+          .section-heading {
+            display: flex;
+            align-items: center;
+            justify-content:
+              space-between;
+            gap: 15px;
+            margin-bottom: 8px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            break-inside: auto;
+          }
+
+          thead {
+            display: table-header-group;
+          }
+
+          tr {
+            break-inside: avoid;
+          }
+
+          th {
+            padding: 7px 6px;
+            color: #ffffff;
+            background: #1478ad;
+            font-size: 8px;
+            text-align: left;
+            text-transform: uppercase;
+          }
+
+          td {
+            padding: 7px 6px;
+            border-bottom:
+              1px solid #dfe7ec;
+            vertical-align: middle;
+          }
+
+          tbody tr:nth-child(even) {
+            background: #f7fafc;
+          }
+
+          .number {
+            text-align: right;
+            white-space: nowrap;
+          }
+
+          .status {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 3px 7px;
+            font-size: 8px;
+            font-weight: 800;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+
+          .online,
+          .cleared {
+            color: #086647;
+            background: #d9f7ea;
+          }
+
+          .offline,
+          .alarm-active {
+            color: #9b1c1c;
+            background: #fee2e2;
+          }
+
+          .notice {
+            margin-top: 18px;
+            padding: 12px;
+            border-left:
+              4px solid #e3a008;
+            background: #fff8df;
+            color: #684c06;
+          }
+
+          .site-section {
+            break-inside: avoid;
+          }
+
+          .alarm-section {
+            page-break-before: auto;
+          }
+
+          footer {
+            margin-top: 24px;
+            padding-top: 10px;
+            border-top:
+              1px solid #cbd5df;
+            color: #6b7785;
+            font-size: 8px;
+            text-align: center;
+          }
+
+          @media print {
+            body {
+              print-color-adjust: exact;
+              -webkit-print-color-adjust:
+                exact;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <header>
+          <img
+            class="logo"
+            src="${logoUrl}"
+            alt="Suncor Energy"
+          >
+
+          <div class="report-title">
+            <span class="eyebrow">
+              DIPS INSIGHT
+            </span>
+
+            <h1>
+              Regional Bulk Facility
+              Overview
+            </h1>
+
+            <p>
+              Calendar year
+              ${dashboardData.year}
+            </p>
+
+            <p>
+              Generated ${generatedAt}
+            </p>
+          </div>
+        </header>
+
+        <div class="summary">
+          <div class="summary-card">
+            <span>Sites Online</span>
+
+            <strong>
+              ${onlineCount} of
+              ${sites.length}
+            </strong>
+          </div>
+
+          <div class="summary-card">
+            <span>
+              Gasoline Recorded
+            </span>
+
+            <strong>
+              ${litres(gasolineTotal)}
+            </strong>
+          </div>
+
+          <div class="summary-card">
+            <span>
+              All Products Recorded
+            </span>
+
+            <strong>
+              ${litres(allProductsTotal)}
+            </strong>
+          </div>
+
+          <div class="summary-card">
+            <span>Active Alarms</span>
+
+            <strong>
+              ${activeAlarms.length}
+            </strong>
+          </div>
+        </div>
+
+        <section>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">
+                REGIONAL STATUS
+              </span>
+
+              <h2>
+                Site Health Summary
+              </h2>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Location</th>
+                <th>Site</th>
+                <th>Status</th>
+                <th>Last Report</th>
+                <th>Recorded Since</th>
+                <th class="number">
+                  Tanks
+                </th>
+                <th class="number">
+                  Active Alarms
+                </th>
+                <th class="number">
+                  Recorded Volume
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${siteRows}
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">
+                DELIVERY TRENDS
+              </span>
+
+              <h2>
+                Regional Monthly
+                Deliveries
+              </h2>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Month</th>
+
+                <th class="number">
+                  All Products
+                </th>
+
+                <th class="number">
+                  Gasoline
+                </th>
+
+                <th class="number">
+                  Diesel
+                </th>
+
+                <th class="number">
+                  Other
+                </th>
+
+                <th class="number">
+                  Deliveries
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${monthlyRows}
+            </tbody>
+          </table>
+        </section>
+
+        ${siteTankSections}
+
+        <section class="alarm-section">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">
+                ALARM CONDITIONS
+              </span>
+
+              <h2>Alarm Summary</h2>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Site</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>First Detected</th>
+                <th>Last Seen / Cleared</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${
+                alarmRows ||
+                `
+                  <tr>
+                    <td colspan="6">
+                      No alarm conditions
+                      have been recorded.
+                    </td>
+                  </tr>
+                `
+              }
+            </tbody>
+          </table>
+        </section>
+
+        <div class="notice">
+          <strong>Data-quality note:</strong>
+
+          Delivery totals and gasoline
+          progress are based only on records
+          collected by DIPS since the
+          displayed monitoring start dates.
+
+          Historical deliveries recorded
+          before DIPS monitoring began have
+          not been added unless specifically
+          entered as a baseline.
+        </div>
+
+        <footer>
+          Regional Bulk Facility Overview ·
+          Powered by DIPS Insight ·
+          Proof of Concept
+        </footer>
+
+        <script>
+          window.addEventListener(
+            "load",
+            function () {
+              setTimeout(
+                function () {
+                  window.print();
+                },
+                700
+              );
+            }
+          );
+        <\/script>
+      </body>
+    </html>
+  `);
+
+  reportWindow.document.close();
+}
+
+function ensurePdfExportOption() {
+  if ($("export-pdf")) return;
+
+  const options = $("export-options");
+
+  if (!options) return;
+
+  const button =
+    document.createElement("button");
+
+  button.id = "export-pdf";
+  button.type = "button";
+  button.textContent =
+    "Regional PDF Report";
+
+  button.addEventListener(
+    "click",
+    () => {
+      $("export-options").classList.remove(
+        "open",
+      );
+
+      generateRegionalPdf();
+    },
+  );
+
+  options.prepend(button);
+}
+
+function showDashboard() {
+  $("login").hidden = true;
+  $("login").style.display = "none";
+  $("app").hidden = false;
+
+  ensureLogoutButton();
+  ensureExportMenu();
+  ensurePdfExportOption();
+}
