@@ -1,6 +1,484 @@
-const $=id=>document.getElementById(id);let authorization=sessionStorage.getItem("dipsAuth")||"";const fmt=new Intl.NumberFormat("en-CA",{maximumFractionDigits:0});
-function litres(value){return `${fmt.format(Number(value||0))} L`}function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-async function request(){const r=await fetch("/.netlify/functions/dashboard",{headers:{Authorization:authorization}});if(r.status===401)throw new Error("Incorrect username or password");if(!r.ok){const x=await r.json().catch(()=>({}));throw new Error(x.error||"Dashboard data could not be loaded")}return r.json()}
-async function load(){document.body.classList.add("loading");$("page-error").textContent="";try{const d=await request();const online=d.status?.online===true;$("status").textContent=online?"Online":"Offline";$("status-banner").classList.toggle("offline",!online);$("last-seen").textContent=d.status?.last_seen_at?`Last report ${new Date(d.status.last_seen_at).toLocaleString("en-CA")}`:"No recent report";$("year").textContent=d.year;$("gas-total").textContent=litres(d.throughput.filter(x=>x.is_gasoline).reduce((s,x)=>s+Number(x.delivered_litres||0),0));$("all-total").textContent=litres(d.throughput.reduce((s,x)=>s+Number(x.delivered_litres||0),0));$("alarm-count").textContent=d.alarms.length;$("tank-count").textContent=d.throughput.length;$("tanks").innerHTML=d.throughput.map(t=>{const p=Math.max(0,Number(t.compliance_percent||0));return `<article class="tank"><div class="tank-head"><div><span class="eyebrow">TANK ${esc(t.tank)}</span><h3>${esc(t.product||"Unknown")}</h3></div><span class="badge ${t.is_gasoline?"gas":""}">${t.is_gasoline?"Compliance":"Information only"}</span></div><div class="tank-values"><div><span>Delivered in ${d.year}</span><strong>${litres(t.delivered_litres)}</strong></div><div><span>Current volume</span><strong>${t.current_volume_litres==null?"—":litres(t.current_volume_litres)}</strong></div></div>${t.is_gasoline?`<div class="progress"><i style="width:${Math.min(p,100)}%"></i></div><div class="progress-label"><span>${p.toFixed(2)}% of annual limit</span><span>${litres(t.compliance_remaining_litres)} remaining</span></div>`:""}</article>`}).join("")||'<div class="empty">No throughput records found.</div>';$("alarms").innerHTML=d.alarms.map(a=>`<div class="alarm"><span class="alarm-icon">!</span><div><strong>${esc(a.alarm_text||a.alarm_key)}</strong><br><small>${esc(a.category||"Alarm")}</small></div><small>${a.last_seen_at?new Date(a.last_seen_at).toLocaleString("en-CA"):""}</small></div>`).join("")||'<div class="empty">No active critical alarms.</div>'}catch(e){$("page-error").textContent=e.message}finally{document.body.classList.remove("loading")}}
-$("login-form").addEventListener("submit",async e=>{e.preventDefault();authorization="Basic "+btoa(`${$("username").value}:${$("password").value}`);try{await request();sessionStorage.setItem("dipsAuth",authorization);$("login").hidden=true;$("app").hidden=false;await load()}catch(err){$("login-error").textContent=err.message}});$("refresh").addEventListener("click",load);if(authorization){$("login").hidden=true;$("app").hidden=false;load()}
+const $ = (id) => document.getElementById(id);
 
+let authorization = sessionStorage.getItem("dipsAuth") || "";
+let dashboardData = null;
+let currentView = "overview";
+
+const fmt = new Intl.NumberFormat("en-CA", {
+  maximumFractionDigits: 0,
+});
+
+function litres(value) {
+  return `${fmt.format(Number(value || 0))} L`;
+}
+
+function esc(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character],
+  );
+}
+
+function lastReport(site) {
+  return site.status?.last_seen_at || site.status?.updated_at || null;
+}
+
+function siteOnline(site) {
+  return site.status?.online === true;
+}
+
+function allThroughput() {
+  return dashboardData.sites.flatMap((site) => site.throughput || []);
+}
+
+function allAlarms() {
+  return dashboardData.sites.flatMap((site) =>
+    (site.alarms || []).map((alarm) => ({
+      ...alarm,
+      siteName: site.site.name,
+      locationId: site.site.location_id,
+    })),
+  );
+}
+
+async function request() {
+  const response = await fetch("/.netlify/functions/dashboard", {
+    headers: { Authorization: authorization },
+  });
+
+  if (response.status === 401) {
+    throw new Error("Incorrect username or password");
+  }
+
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || "Dashboard data could not be loaded");
+  }
+
+  return response.json();
+}
+
+const panels = [...document.querySelectorAll(".panel")];
+const throughputPanel = panels[0];
+const alarmsPanel = panels[1];
+const navButtons = [...document.querySelectorAll("nav button")];
+
+navButtons.forEach((button) => {
+  button.disabled = false;
+  button.addEventListener("click", () => {
+    currentView = button.textContent.trim().toLowerCase();
+    render();
+  });
+});
+
+function setNavigation(view) {
+  navButtons.forEach((button) => {
+    button.classList.toggle(
+      "active",
+      button.textContent.trim().toLowerCase() === view,
+    );
+  });
+}
+
+function setHeader(eyebrow, title) {
+  document.querySelector("main header .eyebrow").textContent = eyebrow;
+  document.querySelector("main header h1").textContent = title;
+}
+
+function setPanelHeading(panel, eyebrow, title) {
+  panel.querySelector(".panel-head .eyebrow").textContent = eyebrow;
+  panel.querySelector(".panel-head h2").textContent = title;
+}
+
+function setStats(gasoline, total, alarms, tanks) {
+  $("gas-total").textContent = litres(gasoline);
+  $("all-total").textContent = litres(total);
+  $("alarm-count").textContent = alarms;
+  $("tank-count").textContent = tanks;
+}
+
+function renderAlarmList(alarms, includeSite = true) {
+  $("alarms").innerHTML =
+    alarms
+      .map(
+        (alarm) => `
+          <div class="alarm">
+            <span class="alarm-icon">!</span>
+            <div>
+              <strong>${esc(alarm.alarm_text || alarm.alarm_key)}</strong>
+              <br>
+              <small>
+                ${includeSite && alarm.siteName ? `${esc(alarm.siteName)} · ` : ""}
+                ${esc(alarm.category || "Alarm")}
+              </small>
+            </div>
+            <small>
+              ${
+                alarm.last_seen_at
+                  ? new Date(alarm.last_seen_at).toLocaleString("en-CA")
+                  : ""
+              }
+            </small>
+          </div>
+        `,
+      )
+      .join("") || '<div class="empty">No active critical alarms.</div>';
+}
+
+function renderSiteCards() {
+  $("tanks").innerHTML = dashboardData.sites
+    .map((site) => {
+      const throughput = site.throughput || [];
+      const alarms = site.alarms || [];
+      const total = throughput.reduce(
+        (sum, tank) => sum + Number(tank.delivered_litres || 0),
+        0,
+      );
+      const last = lastReport(site);
+
+      return `
+        <article
+          class="tank site-card"
+          data-location="${site.site.location_id}"
+          style="cursor:pointer"
+        >
+          <div class="tank-head">
+            <div>
+              <span class="eyebrow">LOCATION ${site.site.location_id}</span>
+              <h3>${esc(site.site.name)}</h3>
+            </div>
+            <span class="badge ${siteOnline(site) ? "gas" : ""}">
+              ${siteOnline(site) ? "Online" : "Offline"}
+            </span>
+          </div>
+
+          <div class="tank-values">
+            <div>
+              <span>Delivered in ${dashboardData.year}</span>
+              <strong>${litres(total)}</strong>
+            </div>
+            <div>
+              <span>Tanks reporting</span>
+              <strong>${throughput.length}</strong>
+            </div>
+          </div>
+
+          <div class="progress-label">
+            <span>${alarms.length} active alarm${alarms.length === 1 ? "" : "s"}</span>
+            <span>
+              ${
+                last
+                  ? `Last report ${new Date(last).toLocaleString("en-CA")}`
+                  : "No recent report"
+              }
+            </span>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  document.querySelectorAll(".site-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      renderSite(Number(card.dataset.location));
+    });
+  });
+}
+
+function renderOverview() {
+  currentView = "overview";
+  setNavigation("overview");
+  setHeader("DIPS INSIGHT", "Regional operations overview");
+
+  const sites = dashboardData.sites;
+  const throughput = allThroughput();
+  const alarms = allAlarms();
+  const onlineCount = sites.filter(siteOnline).length;
+
+  $("status").textContent = `${onlineCount} of ${sites.length} sites online`;
+  $("status-banner").classList.toggle("offline", onlineCount !== sites.length);
+  $("last-seen").textContent = `${sites.length} monitored locations`;
+
+  const gasoline = throughput
+    .filter((tank) => tank.is_gasoline)
+    .reduce(
+      (sum, tank) => sum + Number(tank.delivered_litres || 0),
+      0,
+    );
+
+  const total = throughput.reduce(
+    (sum, tank) => sum + Number(tank.delivered_litres || 0),
+    0,
+  );
+
+  setStats(gasoline, total, alarms.length, throughput.length);
+
+  throughputPanel.hidden = false;
+  alarmsPanel.hidden = false;
+
+  setPanelHeading(
+    throughputPanel,
+    "REGIONAL SITES",
+    "Site operations overview",
+  );
+  setPanelHeading(alarmsPanel, "ACTIVE CONDITIONS", "Critical alarms");
+
+  $("year").textContent = dashboardData.year;
+  renderSiteCards();
+  renderAlarmList(alarms);
+}
+
+function renderSites() {
+  currentView = "sites";
+  setNavigation("sites");
+  setHeader("ALL LOCATIONS", "Sites overview");
+
+  const sites = dashboardData.sites;
+  const throughput = allThroughput();
+  const alarms = allAlarms();
+  const onlineCount = sites.filter(siteOnline).length;
+
+  $("status").textContent = `${onlineCount} of ${sites.length} sites online`;
+  $("status-banner").classList.toggle("offline", onlineCount !== sites.length);
+  $("last-seen").textContent = "Select a site to view tank details";
+
+  const gasoline = throughput
+    .filter((tank) => tank.is_gasoline)
+    .reduce(
+      (sum, tank) => sum + Number(tank.delivered_litres || 0),
+      0,
+    );
+
+  const total = throughput.reduce(
+    (sum, tank) => sum + Number(tank.delivered_litres || 0),
+    0,
+  );
+
+  setStats(gasoline, total, alarms.length, throughput.length);
+
+  throughputPanel.hidden = false;
+  alarmsPanel.hidden = true;
+
+  setPanelHeading(
+    throughputPanel,
+    "MONITORED LOCATIONS",
+    "Select a site",
+  );
+
+  $("year").textContent = dashboardData.year;
+  renderSiteCards();
+}
+
+function renderSite(locationId) {
+  const site = dashboardData.sites.find(
+    (item) => item.site.location_id === locationId,
+  );
+
+  if (!site) return;
+
+  setNavigation("sites");
+  setHeader(
+    `LOCATION ${site.site.location_id}`,
+    site.site.name,
+  );
+
+  const throughput = site.throughput || [];
+  const alarms = site.alarms || [];
+  const last = lastReport(site);
+
+  $("status").textContent = siteOnline(site) ? "Online" : "Offline";
+  $("status-banner").classList.toggle("offline", !siteOnline(site));
+  $("last-seen").textContent = last
+    ? `Last report ${new Date(last).toLocaleString("en-CA")}`
+    : "No recent report";
+
+  const gasoline = throughput
+    .filter((tank) => tank.is_gasoline)
+    .reduce(
+      (sum, tank) => sum + Number(tank.delivered_litres || 0),
+      0,
+    );
+
+  const total = throughput.reduce(
+    (sum, tank) => sum + Number(tank.delivered_litres || 0),
+    0,
+  );
+
+  setStats(gasoline, total, alarms.length, throughput.length);
+
+  throughputPanel.hidden = false;
+  alarmsPanel.hidden = false;
+
+  setPanelHeading(
+    throughputPanel,
+    "ANNUAL THROUGHPUT",
+    "Delivered litres by tank",
+  );
+  setPanelHeading(alarmsPanel, "ACTIVE CONDITIONS", "Critical alarms");
+
+  $("year").textContent = dashboardData.year;
+
+  $("tanks").innerHTML =
+    throughput
+      .map((tank) => {
+        const percent = Math.max(
+          0,
+          Number(tank.compliance_percent || 0),
+        );
+
+        return `
+          <article class="tank">
+            <div class="tank-head">
+              <div>
+                <span class="eyebrow">TANK ${esc(tank.tank)}</span>
+                <h3>${esc(tank.product || "Unknown")}</h3>
+              </div>
+              <span class="badge ${tank.is_gasoline ? "gas" : ""}">
+                ${tank.is_gasoline ? "Compliance" : "Information only"}
+              </span>
+            </div>
+
+            <div class="tank-values">
+              <div>
+                <span>Delivered in ${dashboardData.year}</span>
+                <strong>${litres(tank.delivered_litres)}</strong>
+              </div>
+              <div>
+                <span>Current volume</span>
+                <strong>
+                  ${
+                    tank.current_volume_litres == null
+                      ? "—"
+                      : litres(tank.current_volume_litres)
+                  }
+                </strong>
+              </div>
+            </div>
+
+            ${
+              tank.is_gasoline
+                ? `
+                  <div class="progress">
+                    <i style="width:${Math.min(percent, 100)}%"></i>
+                  </div>
+                  <div class="progress-label">
+                    <span>${percent.toFixed(2)}% of annual limit</span>
+                    <span>${litres(tank.compliance_remaining_litres)} remaining</span>
+                  </div>
+                `
+                : ""
+            }
+          </article>
+        `;
+      })
+      .join("") ||
+    '<div class="empty">No throughput records found.</div>';
+
+  renderAlarmList(
+    alarms.map((alarm) => ({
+      ...alarm,
+      siteName: site.site.name,
+    })),
+    false,
+  );
+}
+
+function renderAlarms() {
+  currentView = "alarms";
+  setNavigation("alarms");
+  setHeader("ALL LOCATIONS", "Active alarms");
+
+  const alarms = allAlarms();
+  const sites = dashboardData.sites;
+  const affectedSites = new Set(
+    alarms.map((alarm) => alarm.locationId),
+  ).size;
+
+  $("status").textContent =
+    alarms.length === 0
+      ? "No active critical alarms"
+      : `${alarms.length} active alarm${alarms.length === 1 ? "" : "s"}`;
+
+  $("status-banner").classList.toggle("offline", alarms.length > 0);
+  $("last-seen").textContent =
+    alarms.length === 0
+      ? `${sites.length} sites monitored`
+      : `${affectedSites} site${affectedSites === 1 ? "" : "s"} affected`;
+
+  setStats(0, 0, alarms.length, sites.length);
+
+  throughputPanel.hidden = true;
+  alarmsPanel.hidden = false;
+
+  setPanelHeading(
+    alarmsPanel,
+    "ACTIVE CONDITIONS",
+    "Critical alarms by site",
+  );
+
+  renderAlarmList(alarms);
+}
+
+function render() {
+  if (!dashboardData) return;
+
+  if (currentView === "sites") {
+    renderSites();
+  } else if (currentView === "alarms") {
+    renderAlarms();
+  } else {
+    renderOverview();
+  }
+}
+
+async function load() {
+  document.body.classList.add("loading");
+  $("page-error").textContent = "";
+
+  try {
+    dashboardData = await request();
+    render();
+  } catch (error) {
+    $("page-error").textContent = error.message;
+  } finally {
+    document.body.classList.remove("loading");
+  }
+}
+
+function showDashboard() {
+  $("login").hidden = true;
+  $("login").style.display = "none";
+  $("app").hidden = false;
+}
+
+$("login-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  authorization =
+    "Basic " +
+    btoa(`${$("username").value}:${$("password").value}`);
+
+  try {
+    dashboardData = await request();
+    sessionStorage.setItem("dipsAuth", authorization);
+    $("login-error").textContent = "";
+    showDashboard();
+    renderOverview();
+  } catch (error) {
+    $("login-error").textContent = error.message;
+  }
+});
+
+$("refresh").addEventListener("click", load);
+
+if (authorization) {
+  showDashboard();
+  load();
+}
