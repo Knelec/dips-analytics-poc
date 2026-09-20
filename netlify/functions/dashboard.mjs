@@ -24,6 +24,7 @@ async function query(path) {
       headers: {
         apikey:
           process.env.SUPABASE_SERVICE_ROLE_KEY,
+
         Authorization:
           `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
       },
@@ -40,35 +41,137 @@ async function query(path) {
 }
 
 const siteDefinitions = [
-  { location_id: 1, name: "Prince Albert" },
+  {
+    location_id: 1,
+    name: "Prince Albert",
+  },
   {
     location_id: 48,
     name: "North Battleford Bulk",
   },
-  { location_id: 63, name: "Meadow Lake" },
-  { location_id: 47, name: "The Pas" },
+  {
+    location_id: 63,
+    name: "Meadow Lake",
+  },
+  {
+    location_id: 47,
+    name: "The Pas",
+  },
 ];
 
-function productGroup(product) {
-  const name = String(product || "").toLowerCase();
+const productCatalog = [
+  {
+    key: "diesel",
+    label: "Diesel",
+    color: "#fde047",
+  },
+  {
+    key: "regular",
+    label: "Regular",
+    color: "#67e8f9",
+  },
+  {
+    key: "premium",
+    label: "Premium",
+    color: "#ef4444",
+  },
+  {
+    key: "dyed_diesel",
+    label: "Dyed Diesel",
+    color: "#a855f7",
+  },
+  {
+    key: "dyed_gasoline",
+    label: "Dyed Gasoline",
+    color: "#f97316",
+  },
+  {
+    key: "def",
+    label: "DEF",
+    color: "#1d4ed8",
+  },
+  {
+    key: "other",
+    label: "Other",
+    color: "#94a3b8",
+  },
+];
+
+function identifyProduct(product) {
+  const name = String(product || "")
+    .trim()
+    .toLowerCase();
 
   if (
-    /(regular|premium|gasoline|unleaded|mogas)/.test(
+    /\bdef\b|diesel exhaust fluid/.test(name)
+  ) {
+    return {
+      key: "def",
+      group: "other",
+    };
+  }
+
+  if (
+    /(dyed.*gas|gas.*dyed)/.test(name)
+  ) {
+    return {
+      key: "dyed_gasoline",
+      group: "gasoline",
+    };
+  }
+
+  if (
+    /(dyed.*diesel|diesel.*dyed)/.test(name)
+  ) {
+    return {
+      key: "dyed_diesel",
+      group: "diesel",
+    };
+  }
+
+  if (/premium/.test(name)) {
+    return {
+      key: "premium",
+      group: "gasoline",
+    };
+  }
+
+  if (
+    /(regular|gasoline|unleaded|mogas)/.test(
       name,
     )
   ) {
-    return "gasoline";
+    return {
+      key: "regular",
+      group: "gasoline",
+    };
   }
 
   if (/diesel/.test(name)) {
-    return "diesel";
+    return {
+      key: "diesel",
+      group: "diesel",
+    };
   }
 
-  return "other";
+  return {
+    key: "other",
+    group: "other",
+  };
 }
 
-function createMonthlyTotals(deliveries) {
-  const months = Array.from(
+function emptyProducts() {
+  return productCatalog.reduce(
+    (products, product) => {
+      products[product.key] = 0;
+      return products;
+    },
+    {},
+  );
+}
+
+function createEmptyMonths() {
+  return Array.from(
     { length: 12 },
     (_, index) => ({
       month: index + 1,
@@ -77,8 +180,13 @@ function createMonthlyTotals(deliveries) {
       diesel: 0,
       other: 0,
       deliveries: 0,
+      products: emptyProducts(),
     }),
   );
+}
+
+function createMonthlyTotals(deliveries) {
+  const months = createEmptyMonths();
 
   let recordedSince = null;
   let latestDelivery = null;
@@ -88,14 +196,29 @@ function createMonthlyTotals(deliveries) {
 
     const date = new Date(delivery.end_at);
 
-    if (Number.isNaN(date.getTime())) return;
+    if (Number.isNaN(date.getTime())) {
+      return;
+    }
 
     const monthIndex = date.getMonth();
-    const amount = Number(delivery.amount || 0);
-    const group = productGroup(delivery.product);
+
+    const amount = Number(
+      delivery.amount || 0,
+    );
+
+    const product = identifyProduct(
+      delivery.product,
+    );
 
     months[monthIndex].all += amount;
-    months[monthIndex][group] += amount;
+
+    months[monthIndex][product.group] +=
+      amount;
+
+    months[monthIndex].products[
+      product.key
+    ] += amount;
+
     months[monthIndex].deliveries += 1;
 
     if (
@@ -122,10 +245,25 @@ function createMonthlyTotals(deliveries) {
 
     months: months.map((month) => ({
       ...month,
+
       all: Math.round(month.all),
-      gasoline: Math.round(month.gasoline),
+
+      gasoline: Math.round(
+        month.gasoline,
+      ),
+
       diesel: Math.round(month.diesel),
+
       other: Math.round(month.other),
+
+      products: Object.fromEntries(
+        Object.entries(month.products).map(
+          ([key, value]) => [
+            key,
+            Math.round(value),
+          ],
+        ),
+      ),
     })),
   };
 }
@@ -176,34 +314,35 @@ async function loadSite(site, year) {
   return {
     site: {
       location_id: site.location_id,
-      name: status?.site_name || site.name,
+
+      name:
+        status?.site_name ||
+        site.name,
     },
 
     year,
     throughput,
-    monthly: createMonthlyTotals(deliveries),
+
+    monthly:
+      createMonthlyTotals(deliveries),
 
     status: status
-      ? { ...status, online }
-      : { online: false },
+      ? {
+          ...status,
+          online,
+        }
+      : {
+          online: false,
+        },
 
     alarms,
+
     alarm_history: alarmRows,
   };
 }
 
 function createRegionalMonthly(sites) {
-  const months = Array.from(
-    { length: 12 },
-    (_, index) => ({
-      month: index + 1,
-      all: 0,
-      gasoline: 0,
-      diesel: 0,
-      other: 0,
-      deliveries: 0,
-    }),
-  );
+  const months = createEmptyMonths();
 
   let recordedSince = null;
   let latestDelivery = null;
@@ -264,6 +403,18 @@ function createRegionalMonthly(sites) {
         months[index].deliveries += Number(
           month.deliveries || 0,
         );
+
+        productCatalog.forEach(
+          (product) => {
+            months[index].products[
+              product.key
+            ] += Number(
+              month.products?.[
+                product.key
+              ] || 0,
+            );
+          },
+        );
       },
     );
   });
@@ -272,7 +423,29 @@ function createRegionalMonthly(sites) {
     recorded_since: recordedSince,
     latest_delivery: latestDelivery,
     delivery_count: deliveryCount,
-    months,
+
+    months: months.map((month) => ({
+      ...month,
+
+      all: Math.round(month.all),
+
+      gasoline: Math.round(
+        month.gasoline,
+      ),
+
+      diesel: Math.round(month.diesel),
+
+      other: Math.round(month.other),
+
+      products: Object.fromEntries(
+        Object.entries(month.products).map(
+          ([key, value]) => [
+            key,
+            Math.round(value),
+          ],
+        ),
+      ),
+    })),
   };
 }
 
@@ -283,7 +456,8 @@ export async function handler(event) {
     });
   }
 
-  const year = new Date().getFullYear();
+  const year =
+    new Date().getFullYear();
 
   try {
     const sites = await Promise.all(
@@ -294,15 +468,24 @@ export async function handler(event) {
 
     return json(200, {
       year,
+
+      generated_at:
+        new Date().toISOString(),
+
+      product_catalog:
+        productCatalog,
+
       monthly:
         createRegionalMonthly(sites),
+
       sites,
     });
   } catch (error) {
     console.error(error);
 
     return json(500, {
-      error: "Unable to load dashboard data",
+      error:
+        "Unable to load dashboard data",
     });
   }
 }
