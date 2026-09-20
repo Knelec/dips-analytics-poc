@@ -26,12 +26,31 @@ function esc(value) {
   );
 }
 
+function displayDate(value) {
+  if (!value) return "Unknown";
+
+  return new Date(value).toLocaleDateString("en-CA", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function lastReport(site) {
   return site.status?.last_seen_at || site.status?.updated_at || null;
 }
 
 function siteOnline(site) {
   return site.status?.online === true;
+}
+
+function siteRecordedSince(site) {
+  const dates = (site.throughput || [])
+    .map((tank) => tank.recorded_since)
+    .filter(Boolean)
+    .map((date) => new Date(date).getTime());
+
+  return dates.length ? new Date(Math.min(...dates)) : null;
 }
 
 function allThroughput() {
@@ -72,6 +91,7 @@ const navButtons = [...document.querySelectorAll("nav button")];
 
 navButtons.forEach((button) => {
   button.disabled = false;
+
   button.addEventListener("click", () => {
     currentView = button.textContent.trim().toLowerCase();
     render();
@@ -102,6 +122,22 @@ function setStats(gasoline, total, alarms, tanks) {
   $("all-total").textContent = litres(total);
   $("alarm-count").textContent = alarms;
   $("tank-count").textContent = tanks;
+
+  const statCards = [...document.querySelectorAll(".stats article")];
+
+  if (statCards[0]) {
+    statCards[0].querySelector("span").textContent =
+      "Gasoline recorded";
+    statCards[0].querySelector("small").textContent =
+      "Available delivery history";
+  }
+
+  if (statCards[1]) {
+    statCards[1].querySelector("span").textContent =
+      "All products recorded";
+    statCards[1].querySelector("small").textContent =
+      "Available delivery history";
+  }
 }
 
 function renderAlarmList(alarms, includeSite = true) {
@@ -115,7 +151,11 @@ function renderAlarmList(alarms, includeSite = true) {
               <strong>${esc(alarm.alarm_text || alarm.alarm_key)}</strong>
               <br>
               <small>
-                ${includeSite && alarm.siteName ? `${esc(alarm.siteName)} · ` : ""}
+                ${
+                  includeSite && alarm.siteName
+                    ? `${esc(alarm.siteName)} · `
+                    : ""
+                }
                 ${esc(alarm.category || "Alarm")}
               </small>
             </div>
@@ -129,7 +169,8 @@ function renderAlarmList(alarms, includeSite = true) {
           </div>
         `,
       )
-      .join("") || '<div class="empty">No active critical alarms.</div>';
+      .join("") ||
+    '<div class="empty">No active critical alarms.</div>';
 }
 
 function renderSiteCards() {
@@ -137,11 +178,14 @@ function renderSiteCards() {
     .map((site) => {
       const throughput = site.throughput || [];
       const alarms = site.alarms || [];
+
       const total = throughput.reduce(
         (sum, tank) => sum + Number(tank.delivered_litres || 0),
         0,
       );
+
       const last = lastReport(site);
+      const recordedSince = siteRecordedSince(site);
 
       return `
         <article
@@ -151,9 +195,12 @@ function renderSiteCards() {
         >
           <div class="tank-head">
             <div>
-              <span class="eyebrow">LOCATION ${site.site.location_id}</span>
+              <span class="eyebrow">
+                LOCATION ${site.site.location_id}
+              </span>
               <h3>${esc(site.site.name)}</h3>
             </div>
+
             <span class="badge ${siteOnline(site) ? "gas" : ""}">
               ${siteOnline(site) ? "Online" : "Offline"}
             </span>
@@ -161,9 +208,12 @@ function renderSiteCards() {
 
           <div class="tank-values">
             <div>
-              <span>Delivered in ${dashboardData.year}</span>
+              <span>
+                Recorded since ${displayDate(recordedSince)}
+              </span>
               <strong>${litres(total)}</strong>
             </div>
+
             <div>
               <span>Tanks reporting</span>
               <strong>${throughput.length}</strong>
@@ -171,7 +221,12 @@ function renderSiteCards() {
           </div>
 
           <div class="progress-label">
-            <span>${alarms.length} active alarm${alarms.length === 1 ? "" : "s"}</span>
+            <span>
+              ${alarms.length} active alarm${
+                alarms.length === 1 ? "" : "s"
+              }
+            </span>
+
             <span>
               ${
                 last
@@ -192,20 +247,7 @@ function renderSiteCards() {
   });
 }
 
-function renderOverview() {
-  currentView = "overview";
-  setNavigation("overview");
-  setHeader("DIPS INSIGHT", "Regional operations overview");
-
-  const sites = dashboardData.sites;
-  const throughput = allThroughput();
-  const alarms = allAlarms();
-  const onlineCount = sites.filter(siteOnline).length;
-
-  $("status").textContent = `${onlineCount} of ${sites.length} sites online`;
-  $("status-banner").classList.toggle("offline", onlineCount !== sites.length);
-  $("last-seen").textContent = `${sites.length} monitored locations`;
-
+function calculateTotals(throughput) {
   const gasoline = throughput
     .filter((tank) => tank.is_gasoline)
     .reduce(
@@ -218,7 +260,37 @@ function renderOverview() {
     0,
   );
 
-  setStats(gasoline, total, alarms.length, throughput.length);
+  return { gasoline, total };
+}
+
+function renderOverview() {
+  currentView = "overview";
+  setNavigation("overview");
+  setHeader("DIPS INSIGHT", "Regional operations overview");
+
+  const sites = dashboardData.sites;
+  const throughput = allThroughput();
+  const alarms = allAlarms();
+  const onlineCount = sites.filter(siteOnline).length;
+  const totals = calculateTotals(throughput);
+
+  $("status").textContent =
+    `${onlineCount} of ${sites.length} sites online`;
+
+  $("status-banner").classList.toggle(
+    "offline",
+    onlineCount !== sites.length,
+  );
+
+  $("last-seen").textContent =
+    `${sites.length} monitored locations`;
+
+  setStats(
+    totals.gasoline,
+    totals.total,
+    alarms.length,
+    throughput.length,
+  );
 
   throughputPanel.hidden = false;
   alarmsPanel.hidden = false;
@@ -228,9 +300,15 @@ function renderOverview() {
     "REGIONAL SITES",
     "Site operations overview",
   );
-  setPanelHeading(alarmsPanel, "ACTIVE CONDITIONS", "Critical alarms");
+
+  setPanelHeading(
+    alarmsPanel,
+    "ACTIVE CONDITIONS",
+    "Critical alarms",
+  );
 
   $("year").textContent = dashboardData.year;
+
   renderSiteCards();
   renderAlarmList(alarms);
 }
@@ -244,24 +322,25 @@ function renderSites() {
   const throughput = allThroughput();
   const alarms = allAlarms();
   const onlineCount = sites.filter(siteOnline).length;
+  const totals = calculateTotals(throughput);
 
-  $("status").textContent = `${onlineCount} of ${sites.length} sites online`;
-  $("status-banner").classList.toggle("offline", onlineCount !== sites.length);
-  $("last-seen").textContent = "Select a site to view tank details";
+  $("status").textContent =
+    `${onlineCount} of ${sites.length} sites online`;
 
-  const gasoline = throughput
-    .filter((tank) => tank.is_gasoline)
-    .reduce(
-      (sum, tank) => sum + Number(tank.delivered_litres || 0),
-      0,
-    );
-
-  const total = throughput.reduce(
-    (sum, tank) => sum + Number(tank.delivered_litres || 0),
-    0,
+  $("status-banner").classList.toggle(
+    "offline",
+    onlineCount !== sites.length,
   );
 
-  setStats(gasoline, total, alarms.length, throughput.length);
+  $("last-seen").textContent =
+    "Select a site to view tank details";
+
+  setStats(
+    totals.gasoline,
+    totals.total,
+    alarms.length,
+    throughput.length,
+  );
 
   throughputPanel.hidden = false;
   alarmsPanel.hidden = true;
@@ -292,36 +371,41 @@ function renderSite(locationId) {
   const throughput = site.throughput || [];
   const alarms = site.alarms || [];
   const last = lastReport(site);
+  const totals = calculateTotals(throughput);
 
-  $("status").textContent = siteOnline(site) ? "Online" : "Offline";
-  $("status-banner").classList.toggle("offline", !siteOnline(site));
+  $("status").textContent =
+    siteOnline(site) ? "Online" : "Offline";
+
+  $("status-banner").classList.toggle(
+    "offline",
+    !siteOnline(site),
+  );
+
   $("last-seen").textContent = last
     ? `Last report ${new Date(last).toLocaleString("en-CA")}`
     : "No recent report";
 
-  const gasoline = throughput
-    .filter((tank) => tank.is_gasoline)
-    .reduce(
-      (sum, tank) => sum + Number(tank.delivered_litres || 0),
-      0,
-    );
-
-  const total = throughput.reduce(
-    (sum, tank) => sum + Number(tank.delivered_litres || 0),
-    0,
+  setStats(
+    totals.gasoline,
+    totals.total,
+    alarms.length,
+    throughput.length,
   );
-
-  setStats(gasoline, total, alarms.length, throughput.length);
 
   throughputPanel.hidden = false;
   alarmsPanel.hidden = false;
 
   setPanelHeading(
     throughputPanel,
-    "ANNUAL THROUGHPUT",
+    "RECORDED THROUGHPUT",
     "Delivered litres by tank",
   );
-  setPanelHeading(alarmsPanel, "ACTIVE CONDITIONS", "Critical alarms");
+
+  setPanelHeading(
+    alarmsPanel,
+    "ACTIVE CONDITIONS",
+    "Critical alarms",
+  );
 
   $("year").textContent = dashboardData.year;
 
@@ -337,19 +421,29 @@ function renderSite(locationId) {
           <article class="tank">
             <div class="tank-head">
               <div>
-                <span class="eyebrow">TANK ${esc(tank.tank)}</span>
+                <span class="eyebrow">
+                  TANK ${esc(tank.tank)}
+                </span>
                 <h3>${esc(tank.product || "Unknown")}</h3>
               </div>
+
               <span class="badge ${tank.is_gasoline ? "gas" : ""}">
-                ${tank.is_gasoline ? "Compliance" : "Information only"}
+                ${
+                  tank.is_gasoline
+                    ? "Recorded progress"
+                    : "Information only"
+                }
               </span>
             </div>
 
             <div class="tank-values">
               <div>
-                <span>Delivered in ${dashboardData.year}</span>
+                <span>
+                  Recorded since ${displayDate(tank.recorded_since)}
+                </span>
                 <strong>${litres(tank.delivered_litres)}</strong>
               </div>
+
               <div>
                 <span>Current volume</span>
                 <strong>
@@ -368,10 +462,22 @@ function renderSite(locationId) {
                   <div class="progress">
                     <i style="width:${Math.min(percent, 100)}%"></i>
                   </div>
+
                   <div class="progress-label">
-                    <span>${percent.toFixed(2)}% of annual limit</span>
-                    <span>${litres(tank.compliance_remaining_litres)} remaining</span>
+                    <span>
+                      ${percent.toFixed(2)}% of 2,000,000 L recorded
+                    </span>
+                    <span>
+                      ${litres(
+                        tank.compliance_remaining_litres,
+                      )} to limit*
+                    </span>
                   </div>
+
+                  <small style="display:block;margin-top:10px;color:#fbbf24">
+                    *Based on recorded deliveries only. Historical
+                    baseline has not been entered.
+                  </small>
                 `
                 : ""
             }
@@ -397,6 +503,7 @@ function renderAlarms() {
 
   const alarms = allAlarms();
   const sites = dashboardData.sites;
+
   const affectedSites = new Set(
     alarms.map((alarm) => alarm.locationId),
   ).size;
@@ -404,13 +511,21 @@ function renderAlarms() {
   $("status").textContent =
     alarms.length === 0
       ? "No active critical alarms"
-      : `${alarms.length} active alarm${alarms.length === 1 ? "" : "s"}`;
+      : `${alarms.length} active alarm${
+          alarms.length === 1 ? "" : "s"
+        }`;
 
-  $("status-banner").classList.toggle("offline", alarms.length > 0);
+  $("status-banner").classList.toggle(
+    "offline",
+    alarms.length > 0,
+  );
+
   $("last-seen").textContent =
     alarms.length === 0
       ? `${sites.length} sites monitored`
-      : `${affectedSites} site${affectedSites === 1 ? "" : "s"} affected`;
+      : `${affectedSites} site${
+          affectedSites === 1 ? "" : "s"
+        } affected`;
 
   setStats(0, 0, alarms.length, sites.length);
 
