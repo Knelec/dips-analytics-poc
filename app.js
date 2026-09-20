@@ -266,7 +266,10 @@ function calculateTotals(throughput) {
 function renderOverview() {
   currentView = "overview";
   setNavigation("overview");
-  setHeader("DIPS INSIGHT", "Regional operations overview");
+  setHeader(
+  "REGIONAL BULK FACILITIES",
+  "Regional Bulk Facility Overview",
+);
 
   const sites = dashboardData.sites;
   const throughput = allThroughput();
