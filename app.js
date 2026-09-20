@@ -1586,3 +1586,473 @@ function renderAlarms() {
 
   renderRegionalAlarmHistory(history);
 }
+
+
+function csvCell(value) {
+  const text =
+    value === null || value === undefined
+      ? ""
+      : String(value);
+
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename, headers, rows) {
+  const lines = [
+    headers.map(csvCell).join(","),
+    ...rows.map((row) =>
+      row.map(csvCell).join(","),
+    ),
+  ];
+
+  const blob = new Blob(
+    ["\uFEFF" + lines.join("\r\n")],
+    {
+      type: "text/csv;charset=utf-8",
+    },
+  );
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
+}
+
+function exportSiteSummary() {
+  const headers = [
+    "Location ID",
+    "Site Name",
+    "Status",
+    "Last Report",
+    "Records Available Since",
+    "Tanks Reporting",
+    "Active Alarms",
+    "Gasoline Recorded (L)",
+    "All Products Recorded (L)",
+  ];
+
+  const rows = dashboardData.sites.map((site) => {
+    const throughput =
+      site.throughput || [];
+
+    const gasoline = throughput
+      .filter((tank) => tank.is_gasoline)
+      .reduce(
+        (sum, tank) =>
+          sum +
+          Number(
+            tank.delivered_litres || 0,
+          ),
+        0,
+      );
+
+    const total = throughput.reduce(
+      (sum, tank) =>
+        sum +
+        Number(
+          tank.delivered_litres || 0,
+        ),
+      0,
+    );
+
+    return [
+      site.site.location_id,
+      site.site.name,
+      siteOnline(site)
+        ? "Online"
+        : "Offline",
+      lastReport(site) || "",
+      site.monthly?.recorded_since || "",
+      throughput.length,
+      (site.alarms || []).length,
+      Math.round(gasoline),
+      Math.round(total),
+    ];
+  });
+
+  downloadCsv(
+    `regional-site-summary-${dashboardData.year}.csv`,
+    headers,
+    rows,
+  );
+}
+
+function exportMonthlyDeliveries() {
+  const headers = [
+    "Location ID",
+    "Site Name",
+    "Year",
+    "Month",
+    "Data Available",
+    "All Products (L)",
+    "Gasoline (L)",
+    "Diesel (L)",
+    "Other Products (L)",
+    "Delivery Count",
+  ];
+
+  const monthNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  const rows = dashboardData.sites.flatMap(
+    (site) => {
+      const recordedSince =
+        site.monthly?.recorded_since
+          ? new Date(
+              site.monthly.recorded_since,
+            )
+          : null;
+
+      const firstMonth =
+        recordedSince?.getMonth();
+
+      return (
+        site.monthly?.months || []
+      ).map((month, index) => {
+        const available =
+          firstMonth !== undefined &&
+          firstMonth !== null &&
+          index >= firstMonth;
+
+        return [
+          site.site.location_id,
+          site.site.name,
+          dashboardData.year,
+          monthNames[index],
+          available ? "Yes" : "No",
+          available ? month.all : "",
+          available
+            ? month.gasoline
+            : "",
+          available ? month.diesel : "",
+          available ? month.other : "",
+          available
+            ? month.deliveries
+            : "",
+        ];
+      });
+    },
+  );
+
+  downloadCsv(
+    `monthly-deliveries-${dashboardData.year}.csv`,
+    headers,
+    rows,
+  );
+}
+
+function exportTankThroughput() {
+  const headers = [
+    "Location ID",
+    "Site Name",
+    "Year",
+    "Tank",
+    "Product",
+    "Product ID",
+    "Recorded Since",
+    "Latest Delivery",
+    "Delivery Count",
+    "Delivered Litres",
+    "Temperature Compensated Litres",
+    "Current Volume (L)",
+    "Gasoline",
+    "Recorded Percent of Limit",
+    "Recorded Litres Remaining",
+    "Limit Reached",
+  ];
+
+  const rows = dashboardData.sites.flatMap(
+    (site) =>
+      (site.throughput || []).map(
+        (tank) => [
+          site.site.location_id,
+          site.site.name,
+          dashboardData.year,
+          tank.tank,
+          tank.product || "",
+          tank.product_id || "",
+          tank.recorded_since || "",
+          tank.latest_delivery || "",
+          tank.delivery_count || 0,
+          Math.round(
+            Number(
+              tank.delivered_litres || 0,
+            ),
+          ),
+          Math.round(
+            Number(
+              tank.delivered_tc_litres ||
+                0,
+            ),
+          ),
+          tank.current_volume_litres ??
+            "",
+          tank.is_gasoline
+            ? "Yes"
+            : "No",
+          tank.compliance_percent ?? "",
+          tank.compliance_remaining_litres ??
+            "",
+          tank.compliance_limit_reached
+            ? "Yes"
+            : "No",
+        ],
+      ),
+  );
+
+  downloadCsv(
+    `tank-throughput-${dashboardData.year}.csv`,
+    headers,
+    rows,
+  );
+}
+
+function exportAlarmHistory() {
+  const headers = [
+    "Location ID",
+    "Site Name",
+    "Status",
+    "Alarm Key",
+    "Alarm Description",
+    "Category",
+    "First Detected",
+    "Last Seen or Cleared",
+  ];
+
+  const rows = dashboardData.sites
+    .flatMap((site) =>
+      (site.alarm_history || []).map(
+        (alarm) => [
+          site.site.location_id,
+          site.site.name,
+          alarm.active
+            ? "Active"
+            : "Cleared",
+          alarm.alarm_key || "",
+          alarm.alarm_text || "",
+          alarm.category || "",
+          alarm.first_seen_at || "",
+          alarm.last_seen_at || "",
+        ],
+      ),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b[7] || 0).getTime() -
+        new Date(a[7] || 0).getTime(),
+    );
+
+  downloadCsv(
+    `alarm-history-${dashboardData.year}.csv`,
+    headers,
+    rows,
+  );
+}
+
+function ensureExportMenu() {
+  if ($("export-menu")) return;
+
+  const logout = $("logout");
+
+  if (!logout) return;
+
+  const style =
+    document.createElement("style");
+
+  style.id = "export-menu-styles";
+
+  style.textContent = `
+    .export-menu {
+      position: relative;
+    }
+
+    .export-button {
+      border: 1px solid #0891b2;
+      background:
+        rgba(8, 145, 178, 0.16);
+      color: #a5f3fc;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .export-options {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 100;
+      display: none;
+      min-width: 230px;
+      padding: 8px;
+      border: 1px solid #475569;
+      border-radius: 10px;
+      background: #0f172a;
+      box-shadow:
+        0 18px 45px
+        rgba(0, 0, 0, 0.4);
+    }
+
+    .export-options.open {
+      display: grid;
+      gap: 4px;
+    }
+
+    .export-options button {
+      width: 100%;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #cbd5e1;
+      padding: 10px 12px;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .export-options button:hover {
+      background:
+        rgba(34, 211, 238, 0.12);
+      color: #a5f3fc;
+    }
+  `;
+
+  document.head.appendChild(style);
+
+  const wrapper =
+    document.createElement("div");
+
+  wrapper.id = "export-menu";
+  wrapper.className = "export-menu";
+
+  wrapper.innerHTML = `
+    <button
+      id="export-button"
+      class="export-button"
+      type="button"
+    >
+      Export ▾
+    </button>
+
+    <div
+      id="export-options"
+      class="export-options"
+    >
+      <button
+        type="button"
+        data-export="sites"
+      >
+        Site Summary CSV
+      </button>
+
+      <button
+        type="button"
+        data-export="monthly"
+      >
+        Monthly Deliveries CSV
+      </button>
+
+      <button
+        type="button"
+        data-export="tanks"
+      >
+        Tank Throughput CSV
+      </button>
+
+      <button
+        type="button"
+        data-export="alarms"
+      >
+        Alarm History CSV
+      </button>
+    </div>
+  `;
+
+  logout.parentElement.insertBefore(
+    wrapper,
+    logout,
+  );
+
+  $("export-button").addEventListener(
+    "click",
+    (event) => {
+      event.stopPropagation();
+
+      $("export-options").classList.toggle(
+        "open",
+      );
+    },
+  );
+
+  wrapper
+    .querySelectorAll("[data-export]")
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        () => {
+          const type =
+            button.dataset.export;
+
+          if (type === "sites") {
+            exportSiteSummary();
+          }
+
+          if (type === "monthly") {
+            exportMonthlyDeliveries();
+          }
+
+          if (type === "tanks") {
+            exportTankThroughput();
+          }
+
+          if (type === "alarms") {
+            exportAlarmHistory();
+          }
+
+          $("export-options").classList.remove(
+            "open",
+          );
+        },
+      );
+    });
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (!wrapper.contains(event.target)) {
+        $("export-options")?.classList.remove(
+          "open",
+        );
+      }
+    },
+  );
+}
+
+function showDashboard() {
+  $("login").hidden = true;
+  $("login").style.display = "none";
+  $("app").hidden = false;
+
+  ensureLogoutButton();
+  ensureExportMenu();
+}
