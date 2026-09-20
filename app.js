@@ -44,6 +44,28 @@ function siteOnline(site) {
   return site.status?.online === true;
 }
 
+function reportAge(value) {
+  if (!value) return "No report received";
+
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).getTime()) / 60000),
+  );
+
+  if (minutes < 1) return "Reported just now";
+  if (minutes < 60) return `Reported ${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `Reported ${hours} hr${hours === 1 ? "" : "s"} ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  return `Reported ${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 function siteRecordedSince(site) {
   const dates = (site.throughput || [])
     .map((tank) => tank.recorded_since)
@@ -54,7 +76,9 @@ function siteRecordedSince(site) {
 }
 
 function allThroughput() {
-  return dashboardData.sites.flatMap((site) => site.throughput || []);
+  return dashboardData.sites.flatMap(
+    (site) => site.throughput || [],
+  );
 }
 
 function allAlarms() {
@@ -78,7 +102,10 @@ async function request() {
 
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
-    throw new Error(result.error || "Dashboard data could not be loaded");
+
+    throw new Error(
+      result.error || "Dashboard data could not be loaded",
+    );
   }
 
   return response.json();
@@ -108,13 +135,23 @@ function setNavigation(view) {
 }
 
 function setHeader(eyebrow, title) {
-  document.querySelector("main header .eyebrow").textContent = eyebrow;
-  document.querySelector("main header h1").textContent = title;
+  document.querySelector(
+    "main header .eyebrow",
+  ).textContent = eyebrow;
+
+  document.querySelector(
+    "main header h1",
+  ).textContent = title;
 }
 
 function setPanelHeading(panel, eyebrow, title) {
-  panel.querySelector(".panel-head .eyebrow").textContent = eyebrow;
-  panel.querySelector(".panel-head h2").textContent = title;
+  panel.querySelector(
+    ".panel-head .eyebrow",
+  ).textContent = eyebrow;
+
+  panel.querySelector(
+    ".panel-head h2",
+  ).textContent = title;
 }
 
 function setStats(gasoline, total, alarms, tanks) {
@@ -123,11 +160,14 @@ function setStats(gasoline, total, alarms, tanks) {
   $("alarm-count").textContent = alarms;
   $("tank-count").textContent = tanks;
 
-  const statCards = [...document.querySelectorAll(".stats article")];
+  const statCards = [
+    ...document.querySelectorAll(".stats article"),
+  ];
 
   if (statCards[0]) {
     statCards[0].querySelector("span").textContent =
       "Gasoline recorded";
+
     statCards[0].querySelector("small").textContent =
       "Available delivery history";
   }
@@ -135,6 +175,7 @@ function setStats(gasoline, total, alarms, tanks) {
   if (statCards[1]) {
     statCards[1].querySelector("span").textContent =
       "All products recorded";
+
     statCards[1].querySelector("small").textContent =
       "Available delivery history";
   }
@@ -147,22 +188,31 @@ function renderAlarmList(alarms, includeSite = true) {
         (alarm) => `
           <div class="alarm">
             <span class="alarm-icon">!</span>
+
             <div>
-              <strong>${esc(alarm.alarm_text || alarm.alarm_key)}</strong>
+              <strong>
+                ${esc(alarm.alarm_text || alarm.alarm_key)}
+              </strong>
+
               <br>
+
               <small>
                 ${
                   includeSite && alarm.siteName
                     ? `${esc(alarm.siteName)} · `
                     : ""
                 }
+
                 ${esc(alarm.category || "Alarm")}
               </small>
             </div>
+
             <small>
               ${
                 alarm.last_seen_at
-                  ? new Date(alarm.last_seen_at).toLocaleString("en-CA")
+                  ? new Date(
+                      alarm.last_seen_at,
+                    ).toLocaleString("en-CA")
                   : ""
               }
             </small>
@@ -180,7 +230,8 @@ function renderSiteCards() {
       const alarms = site.alarms || [];
 
       const total = throughput.reduce(
-        (sum, tank) => sum + Number(tank.delivered_litres || 0),
+        (sum, tank) =>
+          sum + Number(tank.delivered_litres || 0),
         0,
       );
 
@@ -191,17 +242,24 @@ function renderSiteCards() {
         <article
           class="tank site-card"
           data-location="${site.site.location_id}"
-          style="cursor:pointer"
+          style="cursor:pointer;${
+            siteOnline(site)
+              ? ""
+              : "border-color:rgba(248,113,113,.65);"
+          }"
         >
           <div class="tank-head">
             <div>
               <span class="eyebrow">
                 LOCATION ${site.site.location_id}
               </span>
+
               <h3>${esc(site.site.name)}</h3>
             </div>
 
-            <span class="badge ${siteOnline(site) ? "gas" : ""}">
+            <span
+              class="badge ${siteOnline(site) ? "gas" : ""}"
+            >
               ${siteOnline(site) ? "Online" : "Offline"}
             </span>
           </div>
@@ -211,6 +269,7 @@ function renderSiteCards() {
               <span>
                 Recorded since ${displayDate(recordedSince)}
               </span>
+
               <strong>${litres(total)}</strong>
             </div>
 
@@ -230,8 +289,8 @@ function renderSiteCards() {
             <span>
               ${
                 last
-                  ? `Last report ${new Date(last).toLocaleString("en-CA")}`
-                  : "No recent report"
+                  ? reportAge(last)
+                  : "No report received"
               }
             </span>
           </div>
@@ -251,12 +310,14 @@ function calculateTotals(throughput) {
   const gasoline = throughput
     .filter((tank) => tank.is_gasoline)
     .reduce(
-      (sum, tank) => sum + Number(tank.delivered_litres || 0),
+      (sum, tank) =>
+        sum + Number(tank.delivered_litres || 0),
       0,
     );
 
   const total = throughput.reduce(
-    (sum, tank) => sum + Number(tank.delivered_litres || 0),
+    (sum, tank) =>
+      sum + Number(tank.delivered_litres || 0),
     0,
   );
 
@@ -266,10 +327,11 @@ function calculateTotals(throughput) {
 function renderOverview() {
   currentView = "overview";
   setNavigation("overview");
+
   setHeader(
-  "REGIONAL BULK FACILITIES",
-  "Regional Bulk Facility Overview",
-);
+    "REGIONAL BULK FACILITIES",
+    "Regional Bulk Facility Overview",
+  );
 
   const sites = dashboardData.sites;
   const throughput = allThroughput();
@@ -355,6 +417,7 @@ function renderSites() {
   );
 
   $("year").textContent = dashboardData.year;
+
   renderSiteCards();
 }
 
@@ -366,6 +429,7 @@ function renderSite(locationId) {
   if (!site) return;
 
   setNavigation("sites");
+
   setHeader(
     `LOCATION ${site.site.location_id}`,
     site.site.name,
@@ -427,10 +491,13 @@ function renderSite(locationId) {
                 <span class="eyebrow">
                   TANK ${esc(tank.tank)}
                 </span>
+
                 <h3>${esc(tank.product || "Unknown")}</h3>
               </div>
 
-              <span class="badge ${tank.is_gasoline ? "gas" : ""}">
+              <span
+                class="badge ${tank.is_gasoline ? "gas" : ""}"
+              >
                 ${
                   tank.is_gasoline
                     ? "Recorded progress"
@@ -442,13 +509,18 @@ function renderSite(locationId) {
             <div class="tank-values">
               <div>
                 <span>
-                  Recorded since ${displayDate(tank.recorded_since)}
+                  Recorded since
+                  ${displayDate(tank.recorded_since)}
                 </span>
-                <strong>${litres(tank.delivered_litres)}</strong>
+
+                <strong>
+                  ${litres(tank.delivered_litres)}
+                </strong>
               </div>
 
               <div>
                 <span>Current volume</span>
+
                 <strong>
                   ${
                     tank.current_volume_litres == null
@@ -463,13 +535,17 @@ function renderSite(locationId) {
               tank.is_gasoline
                 ? `
                   <div class="progress">
-                    <i style="width:${Math.min(percent, 100)}%"></i>
+                    <i
+                      style="width:${Math.min(percent, 100)}%"
+                    ></i>
                   </div>
 
                   <div class="progress-label">
                     <span>
-                      ${percent.toFixed(2)}% of 2,000,000 L recorded
+                      ${percent.toFixed(2)}% of
+                      2,000,000 L recorded
                     </span>
+
                     <span>
                       ${litres(
                         tank.compliance_remaining_litres,
@@ -477,9 +553,15 @@ function renderSite(locationId) {
                     </span>
                   </div>
 
-                  <small style="display:block;margin-top:10px;color:#fbbf24">
-                    *Based on recorded deliveries only. Historical
-                    baseline has not been entered.
+                  <small
+                    style="
+                      display:block;
+                      margin-top:10px;
+                      color:#fbbf24
+                    "
+                  >
+                    *Based on recorded deliveries only.
+                    Historical baseline has not been entered.
                   </small>
                 `
                 : ""
@@ -574,6 +656,51 @@ function showDashboard() {
   $("login").hidden = true;
   $("login").style.display = "none";
   $("app").hidden = false;
+
+  ensureLogoutButton();
+}
+
+function showLogin(message = "") {
+  authorization = "";
+  dashboardData = null;
+  currentView = "overview";
+
+  sessionStorage.removeItem("dipsAuth");
+
+  $("app").hidden = true;
+  $("login").hidden = false;
+  $("login").style.removeProperty("display");
+  $("password").value = "";
+  $("login-error").textContent = message;
+}
+
+function ensureLogoutButton() {
+  if ($("logout")) return;
+
+  const refresh = $("refresh");
+  const actions = document.createElement("div");
+
+  actions.style.cssText =
+    "display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+
+  refresh.parentNode.insertBefore(actions, refresh);
+  actions.appendChild(refresh);
+
+  const logout = document.createElement("button");
+
+  logout.id = "logout";
+  logout.type = "button";
+  logout.textContent = "Logout";
+
+  logout.style.cssText =
+    "background:transparent;color:#cbd5e1;" +
+    "border:1px solid #475569;border-radius:8px;" +
+    "padding:10px 16px;font:inherit;font-weight:700;" +
+    "cursor:pointer";
+
+  logout.addEventListener("click", () => showLogin());
+
+  actions.appendChild(logout);
 }
 
 $("login-form").addEventListener("submit", async (event) => {
@@ -585,8 +712,11 @@ $("login-form").addEventListener("submit", async (event) => {
 
   try {
     dashboardData = await request();
+
     sessionStorage.setItem("dipsAuth", authorization);
+
     $("login-error").textContent = "";
+
     showDashboard();
     renderOverview();
   } catch (error) {
@@ -598,5 +728,12 @@ $("refresh").addEventListener("click", load);
 
 if (authorization) {
   showDashboard();
-  load();
+
+  load().then(() => {
+    if (!dashboardData) {
+      showLogin(
+        "Your session has expired. Please sign in again.",
+      );
+    }
+  });
 }
