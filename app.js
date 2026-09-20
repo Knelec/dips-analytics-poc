@@ -2964,3 +2964,1100 @@ function showDashboard() {
   ensureExportMenu();
   ensurePdfExportOption();
 }
+
+
+const visualProductColours = {
+  diesel: "#fde047",
+  regular: "#67e8f9",
+  premium: "#ef4444",
+  dyed_diesel: "#a855f7",
+  dyed_gasoline: "#f97316",
+  def: "#1d4ed8",
+  other: "#94a3b8",
+};
+
+const visualProductLabels = {
+  diesel: "Diesel",
+  regular: "Regular",
+  premium: "Premium",
+  dyed_diesel: "Dyed Diesel",
+  dyed_gasoline: "Dyed Gasoline",
+  def: "DEF",
+  other: "Other",
+};
+
+function addVisualUpgradeStyles() {
+  if ($("visual-upgrade-styles")) return;
+
+  const style =
+    document.createElement("style");
+
+  style.id = "visual-upgrade-styles";
+
+  style.textContent = `
+    .site-card {
+      position: relative;
+      overflow: hidden;
+      transition:
+        transform 0.18s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
+    }
+
+    .site-card:hover {
+      transform: translateY(-2px);
+      box-shadow:
+        0 12px 28px
+        rgba(0, 0, 0, 0.22);
+    }
+
+    .site-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 5px;
+      background: #64748b;
+    }
+
+    .site-card.health-online::before {
+      background: #34d399;
+    }
+
+    .site-card.health-attention::before {
+      background: #fbbf24;
+    }
+
+    .site-card.health-offline::before {
+      background: #f87171;
+    }
+
+    .site-card.health-unknown::before {
+      background: #64748b;
+    }
+
+    .health-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .health-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow:
+        0 0 10px currentColor;
+    }
+
+    .health-badge.online {
+      color: #6ee7b7;
+      background:
+        rgba(52, 211, 153, 0.14);
+    }
+
+    .health-badge.attention {
+      color: #fde68a;
+      background:
+        rgba(251, 191, 36, 0.14);
+    }
+
+    .health-badge.offline {
+      color: #fca5a5;
+      background:
+        rgba(248, 113, 113, 0.14);
+    }
+
+    .health-badge.unknown {
+      color: #cbd5e1;
+      background:
+        rgba(100, 116, 139, 0.18);
+    }
+
+    .active-alarm-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 0 16px;
+      padding: 12px 16px;
+      border:
+        1px solid rgba(
+          248,
+          113,
+          113,
+          0.55
+        );
+      border-radius: 10px;
+      color: #fecaca;
+      background:
+        linear-gradient(
+          90deg,
+          rgba(127, 29, 29, 0.42),
+          rgba(69, 10, 10, 0.18)
+        );
+    }
+
+    .active-alarm-banner[hidden] {
+      display: none;
+    }
+
+    .alarm-banner-message {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 750;
+    }
+
+    .alarm-banner-symbol {
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      color: #450a0a;
+      background: #f87171;
+      font-weight: 900;
+    }
+
+    .alarm-banner-button {
+      border:
+        1px solid rgba(
+          254,
+          202,
+          202,
+          0.45
+        );
+      border-radius: 7px;
+      color: #fee2e2;
+      background: transparent;
+      padding: 7px 11px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .back-sites-button {
+      display: none;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      color: #cbd5e1;
+      background: transparent;
+      padding: 10px 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .back-sites-button:hover {
+      color: #a5f3fc;
+      border-color: #0891b2;
+    }
+
+    .kpi-icon {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      color: #a5f3fc;
+      background:
+        rgba(34, 211, 238, 0.12);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .product-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin: 0 0 13px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .legend-colour {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      box-shadow:
+        0 0 8px
+        rgba(255, 255, 255, 0.12);
+    }
+
+    .month-track {
+      position: relative;
+      background:
+        repeating-linear-gradient(
+          to top,
+          transparent 0,
+          transparent calc(25% - 1px),
+          rgba(100, 116, 139, 0.22)
+            calc(25% - 1px),
+          rgba(100, 116, 139, 0.22)
+            25%
+        ),
+        rgba(15, 23, 42, 0.55);
+    }
+
+    .month-stack {
+      width: 68%;
+      min-height: 3px;
+      display: flex;
+      flex-direction: column-reverse;
+      overflow: hidden;
+      border-radius: 7px 7px 2px 2px;
+      box-shadow:
+        0 0 18px
+        rgba(34, 211, 238, 0.12);
+    }
+
+    .month-segment {
+      width: 100%;
+      min-height: 1px;
+    }
+
+    .month-column.current-month
+      .month-track {
+      outline: 2px solid
+        rgba(34, 211, 238, 0.48);
+      outline-offset: 2px;
+    }
+
+    .month-column.current-month
+      .month-label {
+      color: #67e8f9;
+    }
+
+    .month-column.current-month
+      .month-label::after {
+      content: " NOW";
+      font-size: 8px;
+      color: #22d3ee;
+    }
+
+    .sidebar-live {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      color: #94a3b8;
+      font-size: 11px;
+    }
+
+    .sidebar-live-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: #6ee7b7;
+      font-weight: 800;
+    }
+
+    .sidebar-live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #34d399;
+      box-shadow:
+        0 0 9px #34d399;
+    }
+
+    @media (max-width: 700px) {
+      .active-alarm-banner {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function getProductKeysForChart() {
+  if (chartProduct === "gasoline") {
+    return [
+      "regular",
+      "premium",
+      "dyed_gasoline",
+    ];
+  }
+
+  if (chartProduct === "diesel") {
+    return [
+      "diesel",
+      "dyed_diesel",
+    ];
+  }
+
+  return [
+    "diesel",
+    "regular",
+    "premium",
+    "dyed_diesel",
+    "dyed_gasoline",
+    "def",
+    "other",
+  ];
+}
+
+function compactLitres(value) {
+  const amount = Number(value || 0);
+
+  if (amount >= 1000000) {
+    return `${(
+      amount / 1000000
+    ).toFixed(2)}M L`;
+  }
+
+  if (amount >= 1000) {
+    return `${(
+      amount / 1000
+    ).toFixed(0)}k L`;
+  }
+
+  return `${Math.round(amount)} L`;
+}
+
+function updateProductLegend(keys) {
+  let legend = $("product-legend");
+
+  if (!legend) {
+    legend =
+      document.createElement("div");
+
+    legend.id = "product-legend";
+    legend.className =
+      "product-legend";
+
+    $("monthly-note").insertAdjacentElement(
+      "afterend",
+      legend,
+    );
+  }
+
+  const usedKeys = keys.filter((key) =>
+    (chartData?.months || []).some(
+      (month) =>
+        Number(
+          month.products?.[key] || 0,
+        ) > 0,
+    ),
+  );
+
+  legend.innerHTML = (
+    usedKeys.length ? usedKeys : keys
+  )
+    .map(
+      (key) => `
+        <span class="legend-item">
+          <span
+            class="legend-colour"
+            style="background:${
+              visualProductColours[key]
+            }"
+          ></span>
+
+          ${visualProductLabels[key]}
+        </span>
+      `,
+    )
+    .join("");
+}
+
+function drawProductMonthlyChart() {
+  const panel = $("monthly-panel");
+
+  if (!panel || !chartData) return;
+
+  const months =
+    chartData.months || [];
+
+  const keys =
+    getProductKeysForChart();
+
+  const totals = months.map((month) =>
+    keys.reduce(
+      (sum, key) =>
+        sum +
+        Number(
+          month.products?.[key] || 0,
+        ),
+      0,
+    ),
+  );
+
+  const maximum =
+    Math.max(...totals, 1);
+
+  const startMonth =
+    chartData.recorded_since
+      ? new Date(
+          chartData.recorded_since,
+        ).getMonth()
+      : null;
+
+  const currentMonth =
+    new Date().getMonth();
+
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+
+  $("monthly-title").textContent =
+    chartTitle;
+
+  $("monthly-note").textContent =
+    chartData.recorded_since
+      ? `Delivery records available since ${displayDate(
+          chartData.recorded_since,
+        )} · ${fmt.format(
+          chartData.delivery_count || 0,
+        )} deliveries recorded`
+      : "No delivery history is available yet.";
+
+  updateProductLegend(keys);
+
+  $("monthly-chart").innerHTML =
+    months
+      .map((month, index) => {
+        const total = totals[index];
+
+        const unavailable =
+          startMonth === null ||
+          index < startMonth;
+
+        const stackHeight =
+          unavailable
+            ? 0
+            : Math.max(
+                total > 0 ? 4 : 0,
+                (total / maximum) * 100,
+              );
+
+        const segments = keys
+          .filter(
+            (key) =>
+              Number(
+                month.products?.[key] ||
+                  0,
+              ) > 0,
+          )
+          .map((key) => {
+            const value = Number(
+              month.products?.[key] || 0,
+            );
+
+            return `
+              <div
+                class="month-segment"
+                style="
+                  flex:${value};
+                  background:${
+                    visualProductColours[
+                      key
+                    ]
+                  };
+                "
+                title="${
+                  visualProductLabels[key]
+                }: ${litres(value)}"
+              ></div>
+            `;
+          })
+          .join("");
+
+        return `
+          <div
+            class="
+              month-column
+              ${
+                unavailable
+                  ? "unavailable"
+                  : ""
+              }
+              ${
+                index === currentMonth
+                  ? "current-month"
+                  : ""
+              }
+            "
+            title="${
+              monthNames[index]
+            }: ${
+              unavailable
+                ? "Not available"
+                : litres(total)
+            }"
+          >
+            <div class="month-value">
+              ${
+                unavailable
+                  ? "—"
+                  : compactLitres(total)
+              }
+            </div>
+
+            <div class="month-track">
+              <div
+                class="month-stack"
+                style="
+                  height:${stackHeight}%;
+                "
+              >
+                ${segments}
+              </div>
+            </div>
+
+            <div class="month-label">
+              ${monthNames[index]}
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+}
+
+function getSiteHealth(site) {
+  const last = lastReport(site);
+  const alarms =
+    (site.alarms || []).length;
+
+  if (!last) {
+    return {
+      level: "unknown",
+      label: "No Report",
+    };
+  }
+
+  if (!siteOnline(site)) {
+    return {
+      level: "offline",
+      label: "Offline",
+    };
+  }
+
+  if (alarms > 0) {
+    return {
+      level: "attention",
+      label: "Attention",
+    };
+  }
+
+  return {
+    level: "online",
+    label: "Healthy",
+  };
+}
+
+function renderUpgradedSiteCards() {
+  $("tanks").innerHTML =
+    dashboardData.sites
+      .map((site) => {
+        const throughput =
+          site.throughput || [];
+
+        const alarms =
+          site.alarms || [];
+
+        const health =
+          getSiteHealth(site);
+
+        const total =
+          throughput.reduce(
+            (sum, tank) =>
+              sum +
+              Number(
+                tank.delivered_litres ||
+                  0,
+              ),
+            0,
+          );
+
+        const last =
+          lastReport(site);
+
+        const recordedSince =
+          siteRecordedSince(site);
+
+        return `
+          <article
+            class="
+              tank
+              site-card
+              health-${health.level}
+            "
+            data-location="${
+              site.site.location_id
+            }"
+            style="cursor:pointer"
+          >
+            <div class="tank-head">
+              <div>
+                <span class="eyebrow">
+                  LOCATION
+                  ${site.site.location_id}
+                </span>
+
+                <h3>
+                  ${esc(site.site.name)}
+                </h3>
+              </div>
+
+              <span
+                class="
+                  badge
+                  health-badge
+                  ${health.level}
+                "
+              >
+                <span
+                  class="health-dot"
+                ></span>
+
+                ${health.label}
+              </span>
+            </div>
+
+            <div class="tank-values">
+              <div>
+                <span>
+                  Recorded since
+                  ${displayDate(
+                    recordedSince,
+                  )}
+                </span>
+
+                <strong>
+                  ${litres(total)}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  Tanks reporting
+                </span>
+
+                <strong>
+                  ${throughput.length}
+                </strong>
+              </div>
+            </div>
+
+            <div class="progress-label">
+              <span>
+                ${alarms.length}
+                active alarm${
+                  alarms.length === 1
+                    ? ""
+                    : "s"
+                }
+              </span>
+
+              <span>
+                ${
+                  last
+                    ? reportAge(last)
+                    : "No report received"
+                }
+              </span>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+
+  document
+    .querySelectorAll(".site-card")
+    .forEach((card) => {
+      card.addEventListener(
+        "click",
+        () => {
+          renderSite(
+            Number(
+              card.dataset.location,
+            ),
+          );
+        },
+      );
+    });
+}
+
+function ensureAlarmBanner() {
+  if ($("active-alarm-banner")) {
+    return;
+  }
+
+  const banner =
+    document.createElement("section");
+
+  banner.id =
+    "active-alarm-banner";
+
+  banner.className =
+    "active-alarm-banner";
+
+  banner.hidden = true;
+
+  banner.innerHTML = `
+    <div class="alarm-banner-message">
+      <span
+        class="alarm-banner-symbol"
+      >
+        !
+      </span>
+
+      <span id="alarm-banner-text">
+      </span>
+    </div>
+
+    <button
+      id="alarm-banner-button"
+      class="alarm-banner-button"
+      type="button"
+    >
+      View alarms
+    </button>
+  `;
+
+  $("status-banner").insertAdjacentElement(
+    "afterend",
+    banner,
+  );
+
+  $("alarm-banner-button")
+    .addEventListener(
+      "click",
+      () => {
+        currentView = "alarms";
+        renderAlarms();
+      },
+    );
+}
+
+function updateAlarmBanner() {
+  ensureAlarmBanner();
+
+  const alarms = allAlarms();
+  const banner =
+    $("active-alarm-banner");
+
+  if (!alarms.length) {
+    banner.hidden = true;
+    return;
+  }
+
+  const affectedSites =
+    new Set(
+      alarms.map(
+        (alarm) => alarm.locationId,
+      ),
+    ).size;
+
+  $("alarm-banner-text").textContent =
+    `${alarms.length} active critical alarm${
+      alarms.length === 1 ? "" : "s"
+    } across ${affectedSites} facilit${
+      affectedSites === 1 ? "y" : "ies"
+    }`;
+
+  banner.hidden = false;
+}
+
+function ensureBackToSitesButton() {
+  if ($("back-to-sites")) return;
+
+  const button =
+    document.createElement("button");
+
+  button.id = "back-to-sites";
+  button.type = "button";
+  button.className =
+    "back-sites-button";
+
+  button.textContent =
+    "← All Sites";
+
+  button.addEventListener(
+    "click",
+    () => {
+      currentView = "sites";
+      renderSites();
+    },
+  );
+
+  const actions =
+    $("refresh").parentElement;
+
+  actions.insertBefore(
+    button,
+    $("refresh"),
+  );
+}
+
+function showBackToSites(show) {
+  ensureBackToSitesButton();
+
+  $("back-to-sites").style.display =
+    show ? "inline-flex" : "none";
+}
+
+function addKpiIcons(
+  labels,
+) {
+  const cards = [
+    ...document.querySelectorAll(
+      ".stats article",
+    ),
+  ];
+
+  cards.forEach((card, index) => {
+    let icon =
+      card.querySelector(
+        ".kpi-icon",
+      );
+
+    if (!icon) {
+      icon =
+        document.createElement(
+          "span",
+        );
+
+      icon.className =
+        "kpi-icon";
+
+      card.prepend(icon);
+    }
+
+    icon.textContent =
+      labels[index] || "•";
+  });
+}
+
+function updateRegionalKpis() {
+  const cards = [
+    ...document.querySelectorAll(
+      ".stats article",
+    ),
+  ];
+
+  const sites =
+    dashboardData.sites;
+
+  const onlineCount =
+    sites.filter(siteOnline).length;
+
+  if (cards[3]) {
+    cards[3].querySelector(
+      "span:not(.kpi-icon)",
+    ).textContent =
+      "Sites online";
+
+    cards[3].querySelector(
+      "strong",
+    ).textContent =
+      `${onlineCount} / ${sites.length}`;
+
+    cards[3].querySelector(
+      "small",
+    ).textContent =
+      "Live facility health";
+  }
+
+  addKpiIcons([
+    "G",
+    "Σ",
+    "!",
+    "●",
+  ]);
+}
+
+function updateSiteKpis() {
+  const cards = [
+    ...document.querySelectorAll(
+      ".stats article",
+    ),
+  ];
+
+  if (cards[3]) {
+    cards[3].querySelector(
+      "span:not(.kpi-icon)",
+    ).textContent =
+      "Tanks reporting";
+
+    cards[3].querySelector(
+      "small",
+    ).textContent =
+      "Current facility";
+  }
+
+  addKpiIcons([
+    "G",
+    "Σ",
+    "!",
+    "T",
+  ]);
+}
+
+function updateSidebarLiveStatus() {
+  const footer =
+    document.querySelector(
+      ".aside-foot",
+    );
+
+  if (!footer || !dashboardData) {
+    return;
+  }
+
+  const refreshTime =
+    dashboardData.generated_at
+      ? new Date(
+          dashboardData.generated_at,
+        )
+      : new Date();
+
+  footer.innerHTML = `
+    <div class="sidebar-live">
+      <div class="sidebar-live-row">
+        <span
+          class="sidebar-live-dot"
+        ></span>
+
+        Live data
+      </div>
+
+      <span>
+        Updated
+        ${refreshTime.toLocaleTimeString(
+          "en-CA",
+          {
+            hour: "numeric",
+            minute: "2-digit",
+          },
+        )}
+      </span>
+
+      <span>
+        DIPS Insight · Regional Pilot
+      </span>
+    </div>
+  `;
+}
+
+function putSitesBeforeChart() {
+  const chart =
+    $("monthly-panel");
+
+  if (
+    chart &&
+    throughputPanel &&
+    chart.parentNode
+  ) {
+    chart.parentNode.insertBefore(
+      throughputPanel,
+      chart,
+    );
+  }
+}
+
+function putChartBeforeTanks() {
+  const chart =
+    $("monthly-panel");
+
+  if (
+    chart &&
+    throughputPanel &&
+    throughputPanel.parentNode
+  ) {
+    throughputPanel.parentNode.insertBefore(
+      chart,
+      throughputPanel,
+    );
+  }
+}
+
+addVisualUpgradeStyles();
+ensureAlarmBanner();
+ensureBackToSitesButton();
+
+drawMonthlyChart =
+  drawProductMonthlyChart;
+
+renderSiteCards =
+  renderUpgradedSiteCards;
+
+const originalVisualOverview =
+  renderOverview;
+
+const originalVisualSites =
+  renderSites;
+
+const originalVisualSite =
+  renderSite;
+
+const originalVisualAlarms =
+  renderAlarms;
+
+renderOverview = function () {
+  originalVisualOverview();
+
+  putSitesBeforeChart();
+  updateRegionalKpis();
+  updateAlarmBanner();
+  showBackToSites(false);
+  updateSidebarLiveStatus();
+};
+
+renderSites = function () {
+  originalVisualSites();
+
+  putSitesBeforeChart();
+  updateRegionalKpis();
+  updateAlarmBanner();
+  showBackToSites(false);
+  updateSidebarLiveStatus();
+};
+
+renderSite = function (locationId) {
+  originalVisualSite(locationId);
+
+  putChartBeforeTanks();
+  updateSiteKpis();
+  updateAlarmBanner();
+  showBackToSites(true);
+  updateSidebarLiveStatus();
+};
+
+renderAlarms = function () {
+  originalVisualAlarms();
+
+  $("active-alarm-banner").hidden =
+    true;
+
+  showBackToSites(false);
+  updateRegionalKpis();
+  updateSidebarLiveStatus();
+};
+
+if (dashboardData) {
+  render();
+}
