@@ -36,6 +36,7 @@ async function query(path) {
 }
 
 const siteDefinitions = [
+  { location_id: 1, name: "Prince Albert" },
   { location_id: 48, name: "North Battleford Bulk" },
   { location_id: 63, name: "Meadow Lake" },
   { location_id: 47, name: "The Pas" },
