@@ -4061,3 +4061,45 @@ renderAlarms = function () {
 if (dashboardData) {
   render();
 }
+
+
+const recordedProgressStyle =
+  document.createElement("style");
+
+recordedProgressStyle.textContent = `
+  .tank .badge.gas {
+    color: #a7f3d0;
+    border:
+      1px solid
+      rgba(52, 211, 153, 0.38);
+    background:
+      linear-gradient(
+        135deg,
+        rgba(6, 78, 59, 0.72),
+        rgba(16, 185, 129, 0.18)
+      );
+  }
+
+  .tank .progress {
+    background:
+      rgba(6, 78, 59, 0.35);
+  }
+
+  .tank .progress > i {
+    background:
+      linear-gradient(
+        90deg,
+        #047857 0%,
+        #10b981 55%,
+        #6ee7b7 100%
+      ) !important;
+
+    box-shadow:
+      0 0 12px
+      rgba(52, 211, 153, 0.38);
+  }
+`;
+
+document.head.appendChild(
+  recordedProgressStyle,
+);
